@@ -107,8 +107,22 @@ class BaseNode:
         self.node_id: str = ""
 
     def param(self, name: str, default: Any = None) -> Any:
+        """A declared parameter, with ``{{...}}`` references resolved.
+
+        Interpolation lives here rather than in each node so that every one of
+        them supports it. It used to be applied at ten hand-written call sites
+        in ``builtin_nodes`` and nowhere at all in ``control_nodes`` or
+        ``system_nodes``, which meant a flow author who typed ``{{chat_name}}``
+        into an ``excel`` node's path got a literal file-not-found at run time
+        with nothing in the graph to explain it.
+        """
         if name in self.params and self.params[name] not in (None, ""):
-            return self.params[name]
+            value = self.params[name]
+            if isinstance(value, str) and self.ctx is not None:
+                from .expr import interpolate
+
+                return interpolate(value, self.ctx.scope)
+            return value
         for spec in self.spec.params:
             if spec.name == name:
                 if spec.default is not None:

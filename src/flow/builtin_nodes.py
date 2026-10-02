@@ -60,10 +60,9 @@ class WaitNode(BaseNode):
     _SLICE = 0.25
 
     def execute(self) -> dict[str, Any]:
-        raw = self.param("seconds", 5.0)
-        # Accept {{interval}} so the main loop's cadence is a flow variable
-        # rather than a value baked into the graph.
-        seconds = float(_interpolate(str(raw), self.ctx.scope.snapshot()) or 0.0)
+        # {{interval}} resolves in param(); interpolating again here would
+        # expand a value that legitimately contains braces a second time.
+        seconds = float(self.param("seconds", 5.0) or 0.0)
         deadline = time.monotonic() + seconds
         while time.monotonic() < deadline:
             if self.ctx.abort_requested:
@@ -79,17 +78,14 @@ class SetVarNode(BaseNode):
     tick counter without writing ``tick_id + 1`` in an expression and hoping the
     variable exists.
 
-    ``expression`` is evaluated by :func:`eval` against ``ctx.scope.snapshot()``
-    restricted to safe builtins. Flow authors are the operator of a local tool that
-    already has full screen control, but an unrestricted ``eval`` here would also
-    be reachable from a webhook payload, so the namespace is closed.
+    ``expression`` is evaluated by :mod:`src.flow.expr`, which walks a parsed
+    ``ast`` through an allow-list. It used to be handed to :func:`eval` with a
+    reduced ``__builtins__``, on the belief that a closed namespace is a
+    sandbox. It is not: ``().__class__.__bases__[0].__subclasses__()`` still
+    reaches every loaded class under that namespace, and a flow graph is
+    editable through the API, so the expression was an arbitrary-execution
+    primitive rather than a convenience.
     """
-
-    _SAFE_BUILTINS = {
-        "abs": abs, "min": min, "max": max, "round": round, "int": int, "float": float,
-        "str": str, "bool": bool, "len": len, "sorted": sorted, "sum": sum,
-        "list": list, "dict": dict, "set": set, "any": any, "all": all, "range": range,
-    }
 
     def execute(self) -> dict[str, Any]:
         name = str(self.param("name", "")).strip()
@@ -110,13 +106,12 @@ class SetVarNode(BaseNode):
         return {name: value}
 
     def _eval(self, expression: str) -> Any:
+        from .expr import evaluate
+        from .schema import FlowError
+
         try:
-            return eval(  # noqa: S307 - closed namespace, see _SAFE_BUILTINS
-                str(expression),
-                {"__builtins__": self._SAFE_BUILTINS},
-                self.ctx.scope.snapshot(),
-            )
-        except Exception as exc:  # noqa: BLE001
+            return evaluate(str(expression), self.ctx.scope)
+        except FlowError as exc:
             raise NodeError(f"表达式求值失败: {exc}") from exc
 
 
@@ -124,8 +119,7 @@ class LogNode(BaseNode):
     """Write a line to the run trace. ``level`` is informational only."""
 
     def execute(self) -> dict[str, Any]:
-        template = str(self.param("message", ""))
-        text = _interpolate(template, self.ctx.scope.snapshot())
+        text = str(self.param("message", ""))
         level = str(self.param("level", "info"))
         try:
             self.ctx.service("logger").log_decision(
@@ -139,34 +133,25 @@ class LogNode(BaseNode):
 class ConditionNode(BaseNode):
     """Branch on a boolean expression.
 
-    ``expression`` accepts the same grammar as edge conditions (``name op literal``)
-    and, when it does not match that grammar, is evaluated as a Python expression
-    against the run scope. Ports: ``true`` / ``false``.
+    ``expression`` is a full expression evaluated by :mod:`src.flow.expr` against
+    the run scope — comparisons, ``and``/``or``/``not``, parentheses, literals and
+    a whitelisted function set. Ports: ``true`` / ``false``.
     """
 
     def execute(self) -> dict[str, Any]:
         from .context import evaluate_condition
-        from .schema import CONDITION_RE, FlowError
+        from .schema import FlowError
 
         expression = str(self.param("expression", "")).strip()
         if not expression:
             raise NodeError("condition 需要 expression 参数")
-        if CONDITION_RE.match(expression):
-            try:
-                value = evaluate_condition(expression, self.ctx.scope)
-            except FlowError:
-                value = bool(self._eval_python(expression))
-        else:
-            value = bool(self._eval_python(expression))
+        try:
+            value = evaluate_condition(expression, self.ctx.scope)
+        except FlowError as exc:
+            raise NodeError(f"条件表达式求值失败: {exc}") from exc
         # The executor routes on this key: it is how a node chooses a port without
         # raising, so the span is recorded as a normal success.
         return {"__branch__": "true" if value else "false", "value": value, "expression": expression}
-
-    def _eval_python(self, expression: str) -> Any:
-        try:
-            return eval(expression, {"__builtins__": {}}, self.ctx.scope.snapshot())  # noqa: S307
-        except Exception as exc:  # noqa: BLE001
-            raise NodeError(f"条件表达式求值失败: {exc}") from exc
 
 
 # ────────────────────────────────────────────────────────── perception ──
@@ -495,7 +480,7 @@ class SendMessageNode(BaseNode):
     """
 
     def execute(self) -> dict[str, Any]:
-        text = _interpolate(str(self.param("text", "")), self.ctx.scope.snapshot())
+        text = str(self.param("text", ""))
         if not text.strip():
             raise NodeError("send_message 的 text 为空")
         chat_name = str(self.param("chat_name", "") or self.ctx.scope.get("chat_name") or "")
@@ -572,7 +557,7 @@ class TypeKeysNode(BaseNode):
 
     def execute(self) -> dict[str, Any]:
         automation = self.ctx.service("automation")
-        text = _interpolate(str(self.param("text", "")), self.ctx.scope.snapshot())
+        text = str(self.param("text", ""))
         if text:
             automation.set_clipboard_text(text)
             ok = bool(automation.send_keys("cmd+v"))
@@ -595,7 +580,7 @@ class SetClipboardNode(BaseNode):
     """Put text on the system clipboard."""
 
     def execute(self) -> dict[str, Any]:
-        text = _interpolate(str(self.param("text", "")), self.ctx.scope.snapshot())
+        text = str(self.param("text", ""))
         return {"success": bool(self.ctx.service("automation").set_clipboard_text(text)), "length": len(text)}
 
 
@@ -605,7 +590,7 @@ class MemorySearchNode(BaseNode):
     """Search the local memory wiki."""
 
     def execute(self) -> dict[str, Any]:
-        query = _interpolate(str(self.param("query", "")), self.ctx.scope.snapshot())
+        query = str(self.param("query", ""))
         if not query:
             raise NodeError("memory_search 需要 query")
         top_k = int(self.param("top_k", 5) or 5)
@@ -862,7 +847,7 @@ class HttpRequestNode(BaseNode):
     """HTTP request. Params: url, method, headers (JSON), body, timeout."""
 
     def execute(self) -> dict[str, Any]:
-        url = _interpolate(str(self.param("url", "")), self.ctx.scope.snapshot())
+        url = str(self.param("url", ""))
         if not url:
             raise NodeError("http_request 需要 url")
         method = str(self.param("method", "GET")).upper()
@@ -895,7 +880,7 @@ class FileNode(BaseNode):
 
     def execute(self) -> dict[str, Any]:
         mode = str(self.param("mode", "read"))
-        raw_path = _interpolate(str(self.param("path", "")), self.ctx.scope.snapshot())
+        raw_path = str(self.param("path", ""))
         if not raw_path:
             raise NodeError("file 需要 path")
         target = (PROJECT_ROOT / raw_path).resolve()
@@ -903,7 +888,7 @@ class FileNode(BaseNode):
             raise NodeError("路径越出项目根目录，已拒绝")
         if mode == "write":
             target.parent.mkdir(parents=True, exist_ok=True)
-            content = _interpolate(str(self.param("content", "")), self.ctx.scope.snapshot())
+            content = str(self.param("content", ""))
             target.write_text(content, encoding="utf-8")
             return {"written": True, "path": str(target.relative_to(PROJECT_ROOT)), "bytes": len(content.encode("utf-8"))}
         if not target.is_file():
@@ -1013,21 +998,22 @@ def register_all(registry: NodeRegistry) -> NodeRegistry:
 
 # ────────────────────────────────────────────────────────────── helpers ──
 
-_TEMPLATE_RE = None
-
 
 def _interpolate(template: str, scope: dict[str, Any]) -> str:
-    """Replace ``{{path.to.value}}`` with the scope value; unknown names stay put."""
-    import re
+    """Resolve ``{{...}}`` in a value that did not come from ``param()``.
 
-    global _TEMPLATE_RE
-    if _TEMPLATE_RE is None:
-        _TEMPLATE_RE = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_.\[\]]*)\s*\}\}")
-
+    Declared parameters are interpolated by :meth:`BaseNode.param`, so this is
+    only for values parsed out of a parameter — the argument map of a tool call,
+    for instance — that therefore never passed through it. It delegates to the
+    shared evaluator rather than keeping a second, weaker template engine
+    around: this one accepted only dotted paths, silently left unknown names in
+    place, and could not evaluate ``{{len(items)}}`` at all.
+    """
     from .context import FlowScope
+    from .expr import interpolate
 
     lookup = scope if isinstance(scope, FlowScope) else FlowScope(scope)
-    return _TEMPLATE_RE.sub(lambda m: str(_stringify(lookup.get(m.group(1)))), template)
+    return interpolate(str(template), lookup, strict=False)
 
 
 def _slug(text: str) -> str:

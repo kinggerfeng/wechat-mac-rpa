@@ -288,11 +288,28 @@ def test_node_returning_none_is_treated_as_empty_not_crashed():
         ("flag == true", {"flag": True}, True),
         ("text ~ 微信", {"text": "这是微信消息"}, True),
         ("items.count > 0", {"items": [1, 2]}, True),
-        ("missing.count > 0", {"other": 1}, False),
+        # A bare word on the right that names nothing stays a literal, so
+        # quoting stays optional; the left-hand side is a value being read and
+        # is not given that leniency.
+        ("name == bob and count > 0", {"name": "bob", "count": 1}, True),
+        ("name == bob and count > 0", {"name": "bob", "count": 0}, False),
+        ("name == bob and count > 0", {"name": "alice", "count": 1}, False),
     ],
 )
 def test_evaluate_condition(expression, scope, expected):
     assert evaluate_condition(expression, FlowScope(scope)) is expected
+
+
+def test_evaluate_condition_rejects_undefined_variable():
+    """A typo in a guard has to fail loudly, not quietly disable it.
+
+    Under the old comparison-regex evaluator the missing name resolved to
+    ``None``, so ``missing.count > 0`` evaluated to ``False`` and the branch it
+    guarded simply never ran. A flow that stops working for a reason nothing in
+    its trace mentions is the failure mode this check exists to prevent.
+    """
+    with pytest.raises(FlowError, match="未定义"):
+        evaluate_condition("missing.count > 0", FlowScope({"other": 1}))
 
 
 def test_evaluate_condition_rejects_garbage():

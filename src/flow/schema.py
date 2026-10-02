@@ -532,16 +532,45 @@ def _reachable(entry: str, nodes: dict[str, Node], edges: dict[str, Edge]) -> se
 
 
 #: ``operand OP literal`` where OP is one of these.
+#:
+#: Retained for backwards compatibility only. It must not be used to decide
+#: whether a condition is well formed: its trailing ``(.+?)`` swallows whatever
+#: follows the first comparison, so ``count > 5 and enabled`` matched cleanly
+#: while comparing ``count`` against the literal string ``"5 and enabled"``.
+#: Validation now parses the condition instead.
 CONDITION_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_.\[\]]*)\s*(==|!=|>=|<=|>|<|~)\s*(.+?)\s*$")
+
+#: ``~`` is the flow-level "contains" operator and is not valid Python; the
+#: marker is syntactically valid, so validation only has to substitute it.
+_TILDE_MARKER_RE = re.compile(r"(?<=[\s\)])\s*~\s*")
+
+
+def is_valid_expression(text: str) -> bool:
+    """Whether ``text`` parses as an expression the evaluator can run.
+
+    Deliberately depends on :mod:`ast` rather than :mod:`src.flow.expr`: the
+    evaluator imports ``FlowError`` from this module, so importing it back here
+    would close a cycle. Parsing is the whole check — the evaluator rejects
+    anything unsupported at run time with a message naming the construct.
+    """
+    import ast
+
+    for candidate in (text, _TILDE_MARKER_RE.sub(" @ ", text)):
+        try:
+            ast.parse(candidate, mode="eval")
+            return True
+        except SyntaxError:
+            continue
+    return False
 
 
 def _validate_condition(edge: Edge, issues: list[ValidationIssue]) -> None:
-    if not CONDITION_RE.match(edge.condition or ""):
+    if not is_valid_expression(edge.condition or ""):
         issues.append(
             ValidationIssue(
                 "error",
                 "bad_condition",
-                f"连线 {edge.id} 的条件 {edge.condition!r} 无法解析，应为 '变量 运算符 字面量'",
+                f"连线 {edge.id} 的条件 {edge.condition!r} 无法解析，应为可求值的表达式",
                 edge_id=edge.id,
             )
         )

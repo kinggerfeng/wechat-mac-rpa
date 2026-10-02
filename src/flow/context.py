@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
-from .schema import CONDITION_RE, FlowError, Node
+from .schema import FlowError, Node
 
 _MISSING = object()
 
@@ -105,20 +105,20 @@ def parse_literal(raw: str) -> Any:
 
 
 def evaluate_condition(expression: str, scope: "FlowScope") -> bool:
-    """Evaluate ``'operand OP literal'`` against ``scope``.
+    """Evaluate a condition expression against ``scope``.
 
-    An unparseable expression is a hard error, not a silent ``True``: a broken
-    guard that always fires would run the wrong branch of a live bot.
+    Delegates to :mod:`src.flow.expr`, which parses the whole string. The
+    previous regex matched only a leading ``operand OP literal`` and silently
+    discarded the remainder, so ``count > 5 and enabled`` was evaluated as
+    ``count > 5`` alone and reported success — a guard silently downgraded to a
+    different guard.
+
+    An unparseable expression is still a hard error, not a silent ``True``: a
+    broken guard that always fires would run the wrong branch of a live bot.
     """
-    match = CONDITION_RE.match(expression)
-    if not match:
-        raise FlowError(f"无法解析条件表达式: {expression!r}")
-    operand, operator, literal_text = match.groups()
-    actual = scope.get(operand)
-    for symbol, compare in _OPERATORS:
-        if operator == symbol:
-            return compare(actual, parse_literal(literal_text))
-    raise FlowError(f"未知运算符 {operator!r}")
+    from .expr import evaluate_condition as _evaluate
+
+    return _evaluate(expression, scope)
 
 
 class FlowScope:
@@ -166,41 +166,54 @@ class FlowScope:
             return iter(dict(self._values))
 
 
+#: Attributes a flow may read off a list without calling a method. ``count`` is
+#: length, not ``list.count``; a sequence position is written as ``items[0]``.
+LIST_ATTRS = frozenset({"count", "first", "last"})
+
+
+def _step(value: Any, part: str) -> Any:
+    """Read one dotted segment off an already-resolved value.
+
+    Split out of :func:`_walk` so the expression evaluator can apply the same
+    grammar to a value it resolved itself. Keeping one implementation is what
+    stops ``items.count`` from meaning length in a condition and ``list.count``
+    everywhere else.
+    """
+    if isinstance(value, dict):
+        if part not in value:
+            return None
+        return value[part]
+    if isinstance(value, (list, tuple)):
+        if part in LIST_ATTRS:
+            if part == "count":
+                return len(value)
+            return (value[0] if value else None) if part == "first" else (
+                value[-1] if value else None
+            )
+        try:
+            return value[int(part)]
+        except (ValueError, IndexError):
+            return None
+    # Objects expose to_dict() for attribute-style access from expressions.
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        as_dict = to_dict()
+        if isinstance(as_dict, dict):
+            if part not in as_dict:
+                return None
+            return as_dict[part]
+    attr = getattr(value, part, None)
+    if attr is None and not hasattr(value, part):
+        return None
+    return attr
+
+
 def _walk(value: Any, parts: list[str]) -> Any:
     current = value
     for part in parts:
         if current is None:
             return None
-        if isinstance(current, dict):
-            if part not in current:
-                return None
-            current = current[part]
-            continue
-        if isinstance(current, (list, tuple)):
-            if part == "count":
-                return len(current)
-            if part == "first":
-                return current[0] if current else None
-            if part == "last":
-                return current[-1] if current else None
-            try:
-                current = current[int(part)]
-            except (ValueError, IndexError):
-                return None
-            continue
-        # Objects expose to_dict() for attribute-style access from expressions.
-        to_dict = getattr(current, "to_dict", None)
-        if callable(to_dict):
-            as_dict = to_dict()
-            if isinstance(as_dict, dict):
-                if part not in as_dict:
-                    return None
-                current = as_dict[part]
-                continue
-        attr = getattr(current, part, None)
-        if attr is None and not hasattr(current, part):
-            return None
-        current = attr
+        current = _step(current, part)
     return current
 
 

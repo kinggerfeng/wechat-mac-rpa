@@ -74,7 +74,7 @@ class WhileNode(BaseNode):
 
     def execute(self) -> dict[str, Any]:
         from .context import evaluate_condition
-        from .schema import CONDITION_RE, FlowError
+        from .schema import FlowError
 
         expression = str(self.param("condition", "")).strip()
         if not expression:
@@ -89,13 +89,15 @@ class WhileNode(BaseNode):
         except (TypeError, ValueError):
             iterations = 0
 
-        if expression and CONDITION_RE.match(expression):
-            try:
-                condition = bool(evaluate_condition(expression, self.ctx.scope))
-            except FlowError:
-                condition = bool(self._eval(expression))
-        else:
-            condition = bool(self._eval(expression))
+        # One evaluator for every shape of condition. This used to fall back to
+        # eval() whenever the expression did not match the old comparison regex,
+        # which meant anything with a call or a parenthesis — len(x) > 0 being
+        # the obvious one — executed author-supplied Python with only
+        # __builtins__ stripped, a sandbox that has never held.
+        try:
+            condition = bool(evaluate_condition(expression, self.ctx.scope))
+        except FlowError as exc:
+            raise NodeError(f"循环条件求值失败: {exc}") from exc
 
         if not condition:
             self.ctx.scope.bind(counter_var, 0)
@@ -116,10 +118,9 @@ class WhileNode(BaseNode):
         }
 
     def _eval(self, expression: str) -> Any:
-        try:
-            return eval(expression, {"__builtins__": {}}, self.ctx.scope.snapshot())  # noqa: S307
-        except Exception as exc:  # noqa: BLE001
-            raise NodeError(f"循环条件求值失败: {exc}") from exc
+        raise NotImplementedError(
+            "条件求值已统一到 src.flow.expr；旧的 eval() 路径存在代码执行风险，已移除"
+        )
 
 
 class ForeachNode(BaseNode):
@@ -169,9 +170,12 @@ class ForeachNode(BaseNode):
         if isinstance(collection, str):
             raw = collection.strip()
             if raw.startswith("["):
+                from .expr import evaluate
+                from .schema import FlowError
+
                 try:
-                    parsed = eval(raw, {"__builtins__": {}}, {"__builtins__": {}})  # noqa: S307
-                except Exception as exc:  # noqa: BLE001
+                    parsed = evaluate(raw, self.ctx.scope)
+                except FlowError as exc:
                     raise NodeError(f"字面量列表解析失败: {exc}") from exc
                 if not isinstance(parsed, (list, tuple)):
                     raise NodeError("collection 字面量必须是列表")

@@ -23,9 +23,26 @@ from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 from .schema import Flow
+from .version import check as check_engine_compat
+from .version import node_fingerprint, stamp
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "rpa.db"
+
+
+def _registry_specs() -> dict[str, Any]:
+    """The registered node types and the parameters each one accepts.
+
+    Imported lazily: the registry builds itself on first use and pulls in the
+    node modules, so importing it at module scope would make every reader of
+    the store pay for the whole engine.
+    """
+    from .registry import get_node_registry
+
+    return {
+        spec.type: [p.name for p in spec.params]
+        for spec in get_node_registry().list_specs()
+    }
 
 SCHEMA_SQL = """
 PRAGMA journal_mode=WAL;
@@ -38,6 +55,12 @@ CREATE TABLE IF NOT EXISTS flows (
     version     INTEGER NOT NULL DEFAULT 1,
     is_active   INTEGER NOT NULL DEFAULT 0,
     graph_json  TEXT NOT NULL,
+    -- Which engine accepted this flow. Columns rather than only a key inside
+    -- graph_json, because the flow list answers "which of these are stale?"
+    -- without loading every graph. Nullable: rows written before versioning
+    -- have neither, which is UNSTAMPED, not broken.
+    engine_version    TEXT,
+    node_fingerprint  TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
@@ -150,6 +173,8 @@ _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # 10:00:50 ends at 10:01:30, and reusing last_run_at for the de-dupe stamp
     # would let that finishing time swallow the whole 10:01 tick.
     ("schedules", "last_fire_minute", "TEXT"),
+    ("flows", "engine_version", "TEXT"),
+    ("flows", "node_fingerprint", "TEXT"),
 )
 
 
@@ -241,20 +266,30 @@ class RpaStore:
         description: str = "",
         is_active: bool | None = None,
     ) -> Flow:
+        # Stamped here rather than in the editor: the store is the one place
+        # every write passes through, so a flow saved from any surface carries
+        # the engine that accepted it. A node's parameters or the registry
+        # changing later then shows up as drift rather than as a silent
+        # behaviour difference.
+        stamp(graph, node_fingerprint(_registry_specs()))
+        payload = json.dumps(graph, ensure_ascii=False)
+        provenance = (graph["engine_version"], graph["node_fingerprint"])
         with self.connect() as conn:
             existing = conn.execute("SELECT is_active FROM flows WHERE id=?", (flow_id,)).fetchone()
             active = int(is_active) if is_active is not None else (existing["is_active"] if existing else 0)
             if existing:
                 conn.execute(
                     "UPDATE flows SET name=?, description=?, graph_json=?, is_active=?,"
+                    " engine_version=?, node_fingerprint=?,"
                     " updated_at=datetime('now','localtime') WHERE id=?",
-                    (name, description, json.dumps(graph, ensure_ascii=False), active, flow_id),
+                    (name, description, payload, active, *provenance, flow_id),
                 )
             else:
                 conn.execute(
-                    "INSERT INTO flows (id, name, description, version, is_active, graph_json)"
-                    " VALUES (?,?,?,?,?,?)",
-                    (flow_id, name, description, int(graph.get("version", 1)), active, json.dumps(graph, ensure_ascii=False)),
+                    "INSERT INTO flows (id, name, description, version, is_active, graph_json,"
+                    " engine_version, node_fingerprint) VALUES (?,?,?,?,?,?,?,?)",
+                    (flow_id, name, description, int(graph.get("version", 1)), active,
+                     payload, *provenance),
                 )
         saved = self.get_flow(flow_id)
         assert saved is not None
@@ -274,6 +309,7 @@ class RpaStore:
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT f.id, f.name, f.description, f.version, f.is_active, f.created_at, f.updated_at,"
+                " f.engine_version, f.node_fingerprint,"
                 " (SELECT COUNT(*) FROM flow_runs r WHERE r.flow_id=f.id) AS run_count,"
                 " (SELECT r.status FROM flow_runs r WHERE r.flow_id=f.id ORDER BY r.started_at DESC LIMIT 1) AS last_status,"
                 " (SELECT r.started_at FROM flow_runs r WHERE r.flow_id=f.id ORDER BY r.started_at DESC LIMIT 1) AS last_run_at"

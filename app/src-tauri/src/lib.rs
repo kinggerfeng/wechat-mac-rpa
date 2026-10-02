@@ -59,7 +59,7 @@ impl BackendProcess {
             .args([
                 "-m",
                 "uvicorn",
-                "python.backend.app:app",
+                "rpa.backend.app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",

@@ -10,8 +10,13 @@ jobs:
   test:
     runs-on: macos-latest
     strategy:
+      # 3.10 is the floor declared in pyproject.toml and must keep working; 3.13
+      # is what the app actually ships against (RPAStudio.app's interpreter).
+      # Testing only one of them is how a module that imports fine locally stops
+      # importing in CI, or the reverse.
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.10", "3.13"]
+      fail-fast: false
 
     steps:
       - name: Checkout repository
@@ -30,8 +35,16 @@ jobs:
 
       - name: Run unit tests
         run: |
-          python3 -m pytest src/tests -v
+          python3 -m pytest tests -v --ignore=tests/e2e
+
+      # Collection only, deliberately: the e2e tier needs a real WeChat window
+      # and a live 8768, so it cannot run here. What this catches is the failure
+      # mode that actually happens — a file in tests/e2e that no longer imports,
+      # discovered months later when someone finally runs it.
+      - name: Verify the e2e tier still collects
+        run: |
+          python3 -m pytest tests/e2e --collect-only -q
 
       - name: Check Python syntax
         run: |
-          python3 -m compileall -q src
+          python3 -m compileall -q rpa tests tools

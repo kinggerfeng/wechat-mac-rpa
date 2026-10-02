@@ -15,10 +15,10 @@ if env_file.exists():
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip())
 
-from src.bot.wechat_bot import WeChatBot
-from src.layout.profile import PROFILE_WECHAT_MAC_1760X1280
-from src.perception.smart_pipeline import SmartPerceptionPipeline
-from src.utils.qwen_client import QwenClient
+from rpa.bot.wechat_bot import WeChatBot
+from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from rpa.perception.smart_pipeline import SmartPerceptionPipeline
+from rpa.utils.qwen_client import QwenClient
 
 _logger = logging.getLogger(__name__)
 

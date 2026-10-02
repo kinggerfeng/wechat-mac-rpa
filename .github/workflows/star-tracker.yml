@@ -29,7 +29,7 @@ jobs:
           fi
       - name: Generate chart
         run: |
-          python3 scripts/generate_star_history.py \
+          python3 tools/ops/generate_star_history.py \
             --stargazers "${RUNNER_TEMP}/stargazers.json" \
             --repository "${RUNNER_TEMP}/repository.json" \
             --history docs/assets/star-history.json \

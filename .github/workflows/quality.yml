@@ -17,7 +17,7 @@ jobs:
           python-version: "3.10"
           cache: "pip"
       - run: pip install ruff
-      - run: ruff check src --select E9,F63,F7,F82
+      - run: ruff check rpa --select E9,F63,F7,F82
 
   ruff-style:
     name: Ruff Style / Import Checks
@@ -30,7 +30,7 @@ jobs:
           cache: "pip"
       - run: pip install ruff
       # 目前仓库遗留风格问题较多，先只报告不阻塞 merge； issues 输出到日志。
-      - run: ruff check src || true
+      - run: ruff check rpa || true
 
   mypy:
     name: Mypy Type Check
@@ -43,7 +43,7 @@ jobs:
           cache: "pip"
       - run: pip install mypy types-requests types-beautifulsoup4 types-Pillow
       # 类型检查现已清零，阻塞 merge。
-      - run: mypy src
+      - run: mypy rpa
 
   bandit:
     name: Bandit Security Scan
@@ -56,7 +56,7 @@ jobs:
           cache: "pip"
       - run: pip install bandit
       # 使用 .bandit 配置：排除 tests 目录的 B101 assert_used，其余 Medium/High 阻塞。
-      - run: bandit -c .bandit -r src -f json -o bandit-report.json
+      - run: bandit -c .bandit -r rpa -f json -o bandit-report.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -75,7 +75,7 @@ jobs:
           cache: "pip"
       - run: pip install -r requirements-dev.txt
       - run: |
-          pytest src/tests --cov=src --cov-report=xml --cov-report=term
+          pytest tests --ignore=tests/e2e --cov=rpa --cov-report=xml --cov-report=term
       - uses: actions/upload-artifact@v7
         if: always()
         with:

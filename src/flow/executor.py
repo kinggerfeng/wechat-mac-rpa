@@ -206,7 +206,10 @@ class FlowExecutor:
         finally:
             self._shutdown_nodes()
             result.ended_at = time.time()
-            result.scope = scope.snapshot()
+            # ``export`` includes the node layer so a consumer of the run result
+            # can still address ``{{n_perceive.messages}}``. The canvas and the
+            # trace panel only want readable names, so they get the flat view.
+            result.scope = scope.export()
         return result
 
     # -- internals ---------------------------------------------------------

@@ -1,4 +1,4 @@
-// Typed client for the desktop API on 127.0.0.1:8767.
+// Typed client for the local RPA API. The origin is configurable; see API_BASE.
 //
 // The Tauri webview can reach the loopback service directly, so this is plain
 // fetch rather than a Tauri invoke wrapper. The one exception is starting the
@@ -24,6 +24,7 @@ import type {
   RecordStatus,
   RecordStopResult,
   Run,
+  LLMProvider,
   Schedule,
   Span,
   Target,
@@ -31,7 +32,15 @@ import type {
   WebhookInfo,
 } from "../types";
 
-export const API_BASE = "http://127.0.0.1:8767";
+/**
+ * Backend origin. Overridable so a build can be pointed at another instance
+ * (the packaged app runs 8768 from RPAStudio.app, a dev shell may run 8767)
+ * without a rebuild. Read once at module load: the value cannot change mid
+ * session, and a request that switched origins would be a cross-instance
+ * read nobody asked for.
+ */
+const CONFIGURED_BASE = (import.meta.env?.VITE_API_BASE as string | undefined)?.trim();
+export const API_BASE = CONFIGURED_BASE || "http://127.0.0.1:8768";
 
 export class ApiError extends Error {
   constructor(
@@ -54,7 +63,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (cause) {
     // A dead backend is the single most common failure in this app, and the
     // message a user sees should say so rather than surfacing "Failed to fetch".
-    throw new ApiError("无法连接本地 Python 服务（127.0.0.1:8767）", 0, cause);
+    // Built from API_BASE, not written out: a hardcoded port here contradicts
+    // the configurable origin above and sends the operator to the wrong one.
+    throw new ApiError(`无法连接本地 Python 服务（${API_BASE}）`, 0, cause);
   }
   const text = await response.text();
   let body: unknown = null;
@@ -139,6 +150,12 @@ export const api = {
   saveSchedule: (payload: Partial<Schedule>) => post<Schedule>("/schedules", payload),
   deleteSchedule: (id: string) => request<{ deleted: string }>(`/schedules/${id}`, { method: "DELETE" }),
   previewCron: (cron: string) => post<CronPreview>("/schedules/cron/preview", { cron }),
+
+  // ── llm providers ──
+  providers: () => request<{ providers: LLMProvider[]; has_default: boolean }>("/llm/providers"),
+  saveProvider: (payload: Partial<LLMProvider>) => post<LLMProvider>("/llm/providers", payload),
+  deleteProvider: (id: string) => request<{ deleted: string }>(`/llm/providers/${id}`, { method: "DELETE" }),
+  testProvider: (id: string) => post<{ ok: boolean; reply: string; model: string }>(`/llm/providers/${id}/test`),
 
   webhookInfo: () => request<WebhookInfo>("/webhook/info"),
 

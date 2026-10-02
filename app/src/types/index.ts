@@ -268,6 +268,30 @@ export interface Schedule {
   cron_preview?: string[];
 }
 
+/**
+ * A configured LLM gateway. `api_key` coming back from the API is always a
+ * mask; `api_key_set` says whether one is stored, so the form can show
+ * "已配置" without ever holding the real key.
+ */
+export interface LLMProvider {
+  id: string;
+  name: string;
+  base_url: string;
+  api_key: string;
+  api_key_set: boolean;
+  model: string;
+  temperature: number | null;
+  max_tokens: number | null;
+  timeout: number | null;
+  is_default: number;
+  enabled: number;
+  note: string;
+  last_ok_at: string | null;
+  last_error: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CronPreview {
   valid: boolean;
   error?: string;

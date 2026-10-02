@@ -12,6 +12,13 @@ Pillow>=12.3.0
 requests>=2.34.2
 httpx>=0.28.1
 beautifulsoup4>=4.15.0
+# src/flow/builtin_nodes.py 的 template 节点。已有 {{var}} 快路径覆盖简单场景，
+# jinja2 负责循环、条件与过滤器——RPA 流程拼装多行文本时用得上。
+Jinja2>=3.1.6
+# src/flow/vision_match.py 的模板匹配与颜色定位。
+# 用 headless 版：GUI 版会拉入 Qt，与 pyautogui 的后端冲突，且本项目不通过
+# cv2 自己的窗口显示任何东西。
+opencv-python-headless>=4.9
 
 # 微信自动化与 OCR
 pyautogui>=0.9.54

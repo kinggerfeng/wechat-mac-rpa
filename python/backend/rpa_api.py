@@ -470,6 +470,98 @@ def delete_schedule(schedule_id: str) -> dict[str, Any]:
     return {"deleted": schedule_id}
 
 
+# ── LLM providers ───────────────────────────────────────────────────
+# Provider rows live in rpa.db so switching gateway is a settings change, not
+# a file edit plus a restart. The stored key is never returned: listings carry
+# a mask, and only the connectivity test — which runs in-process — sees it.
+
+
+def _provider_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": raw.get("id"),
+        "name": str(raw.get("name") or "").strip(),
+        "base_url": str(raw.get("base_url") or "").strip(),
+        "api_key": raw.get("api_key") or "",
+        "model": str(raw.get("model") or "").strip(),
+        "temperature": raw.get("temperature"),
+        "max_tokens": raw.get("max_tokens"),
+        "timeout": raw.get("timeout"),
+        "is_default": int(bool(raw.get("is_default", False))),
+        "enabled": int(bool(raw.get("enabled", True))),
+        "note": str(raw.get("note") or ""),
+    }
+
+
+@router.get("/llm/providers")
+def list_llm_providers() -> dict[str, Any]:
+    providers = get_store().list_providers()
+    return {
+        "providers": providers,
+        # The settings page needs to say "no provider configured yet" without
+        # having to infer it from an empty list plus a separate default lookup.
+        "has_default": any(p.get("is_default") for p in providers),
+    }
+
+
+@router.post("/llm/providers")
+def upsert_llm_provider(payload: dict[str, Any]) -> dict[str, Any]:
+    body = _provider_payload(payload)
+    if not body["name"]:
+        raise HTTPException(status_code=400, detail="name 必填")
+    if not body["base_url"]:
+        raise HTTPException(status_code=400, detail="base_url 必填")
+    if not body["base_url"].startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="base_url 必须以 http:// 或 https:// 开头")
+    saved = get_store().save_provider(body)
+    if not saved:
+        raise HTTPException(status_code=500, detail="保存失败")
+    return saved
+
+
+@router.delete("/llm/providers/{provider_id}")
+def delete_llm_provider(provider_id: str) -> dict[str, Any]:
+    if not get_store().delete_provider(provider_id):
+        raise HTTPException(status_code=404, detail="Provider 不存在")
+    return {"deleted": provider_id}
+
+
+@router.post("/llm/providers/{provider_id}/test")
+def test_llm_provider(provider_id: str) -> dict[str, Any]:
+    """Send a real one-token request so the settings page proves the row.
+
+    Saves a real round trip on a typo'd base_url, which otherwise only shows up
+    as a failed flow run minutes later with no link to the provider that caused
+    it. The outcome is recorded on the row so the list can show health without
+    every reload re-probing the gateway.
+    """
+    store = get_store()
+    provider = store.get_provider(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Provider 不存在")
+
+    from src.llm.openclaw_client import OpenClawClient
+
+    try:
+        client = OpenClawClient(
+            base_url=provider["base_url"],
+            api_key=provider.get("api_key") or "",
+            model=provider.get("model") or "",
+        )
+        reply = client.chat(
+            [{"role": "user", "content": "回复两个字：正常"}],
+            max_tokens=32,
+        )
+    except Exception as exc:  # noqa: BLE001
+        message = f"{type(exc).__name__}: {exc}"
+        store.mark_provider_result(provider_id, ok=False, error=message)
+        # 502, not 500: the gateway is upstream and the row is fine.
+        raise HTTPException(status_code=502, detail=message)
+
+    text = reply if isinstance(reply, str) else ""
+    store.mark_provider_result(provider_id, ok=True)
+    return {"ok": True, "reply": text[:200], "model": client.model}
+
+
 @router.post("/schedules/cron/preview")
 def preview_cron(payload: dict[str, Any]) -> dict[str, Any]:
     return get_scheduler().describe(str(payload.get("cron") or ""))

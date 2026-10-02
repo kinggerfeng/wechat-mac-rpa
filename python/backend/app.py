@@ -268,16 +268,27 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 app = FastAPI(title="WeChat Mac RPA Desktop API", lifespan=lifespan)
+_DEV_ORIGINS = [
+    # Tauri shell
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    # Vite dev / preview. The preview port moves when 4321 is taken, so the
+    # range is matched by regex below rather than enumerated — an origin that
+    # is not allowed fails as a network error with no hint about CORS, which
+    # is a bad hour to spend debugging.
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:1420",
-        "http://127.0.0.1:1420",
-        "tauri://localhost",
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-    ],
-    allow_methods=["GET", "POST"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origins=_DEV_ORIGINS,
+    # DELETE and PUT are not optional: flow, element and provider editing all
+    # issue them, and omitting them fails as a preflight error rather than a
+    # 405, which reads like the route is missing.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
 

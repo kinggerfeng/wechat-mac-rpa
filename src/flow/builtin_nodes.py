@@ -25,6 +25,12 @@ from .executor import branch
 from .registry import BaseNode, NodeRegistry, ParamSpec
 from .schema import NodeAborted, NodeError
 
+#: Vision scroll directions → wheel clicks. Only vertical is expressible as a
+#: wheel gesture: macOS trackpads have no horizontal wheel, and synthesising
+#: one would mean a horizontal drag, which is a different gesture with
+#: different side effects on a list. Left/right is refused rather than faked.
+SCROLL_CLICKS = {"up": 3, "down": -3}
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -552,6 +558,88 @@ class ClickNode(BaseNode):
         }
 
 
+class PointerNode(BaseNode):
+    """Pointer gesture at a resolved point: hover, right-click, double-click,
+    drag, scroll.
+
+    The point is resolved exactly the way :class:`ClickNode` resolves it — an
+    explicit ``x``/``y``, a name in the element library, or free text handed to
+    the vision model. Duplicating that here instead of extracting a helper was
+    tempting, but :class:`ClickNode` predates the three-way scheme and shares
+    its precedence rules with the recorder; keeping the resolution in one
+    module means a change to element or vision resolution cannot land on one
+    gesture and miss the other. The gesture itself is the only new part.
+
+    ``drag`` and ``scroll`` need two points and one point respectively, so
+    they take ``x2``/``y2`` and ``clicks`` respectively and ignore the rest.
+    """
+
+    #: Set by the registration below, one concrete gesture per node type. A
+    #: ``gesture`` param would let a saved flow change meaning by editing a
+    #: dropdown, and the canvas has no way to show which arms are live.
+    gesture = "hover"
+
+    def _resolve_point(self, automation: Any) -> tuple[int, int, dict[str, Any]]:
+        x, y = self.param("x"), self.param("y")
+        if x is None or y is None:
+            bound_x, bound_y = self.ctx.scope.get("located_x"), self.ctx.scope.get("located_y")
+            if bound_x is not None and bound_y is not None:
+                x, y = bound_x, bound_y
+        if x is not None and y is not None:
+            return int(x), int(y), {"source": "fixed"}
+
+        from .strategy import resolve
+
+        element = str(self.param("element", "") or "").strip()
+        description = str(self.param("description", "") or "").strip()
+        if not element and not description:
+            raise NodeError(f"{type(self).__name__} 需要 x/y、element 或 description")
+        located = resolve(
+            self.ctx,
+            description=description or element,
+            target=self.target_name(),
+            mode=self.locate_mode(),
+            element=element or None,
+            confidence=float(self.param("confidence", 0.6) or 0.6),
+        )
+        return located.x, located.y, located.to_dict()
+
+    def execute(self) -> dict[str, Any]:
+        automation = self.ctx.service("automation")
+        kind = self.gesture
+        x, y, located = self._resolve_point(automation)
+        base: dict[str, Any] = {"x": x, "y": y, "gesture": kind}
+
+        if kind == "hover":
+            base["moved"] = bool(automation.move_to(x, y))
+        elif kind == "right_click":
+            base["clicked"] = bool(automation.click_at(x, y, button="right"))
+        elif kind == "double_click":
+            base["clicked"] = bool(automation.click_at(x, y, count=2))
+        elif kind == "drag":
+            x2, y2 = self.param("x2"), self.param("y2")
+            if x2 is None or y2 is None:
+                raise NodeError("drag 需要 x2/y2")
+            base["dropped"] = bool(
+                automation.drag_to(x, y, int(x2), int(y2),
+                                   duration_ms=int(self.param("duration_ms", 500) or 500))
+            )
+            base["x2"], base["y2"] = int(x2), int(y2)
+        elif kind == "scroll":
+            clicks = int(self.param("clicks", 0) or 0)
+            if clicks == 0:
+                raise NodeError("scroll 需要非零 clicks（正数向上，负数向下）")
+            base["scrolled"] = bool(automation.scroll_at(x, y, clicks))
+            base["clicks"] = clicks
+        else:
+            raise NodeError(f"未知手势 {kind!r}")
+
+        for key in ("source", "confidence", "element_name", "label"):
+            if key in located:
+                base[key] = located[key]
+        return base
+
+
 class TypeKeysNode(BaseNode):
     """Send keystrokes through cliclick, or paste ``text`` via the clipboard."""
 
@@ -574,6 +662,74 @@ class ActivateAppNode(BaseNode):
     def execute(self) -> dict[str, Any]:
         app = str(self.param("app", "WeChat"))
         return {"activated": bool(self.ctx.service("automation").activate_app(app)), "app": app}
+
+
+class WindowRectNode(BaseNode):
+    """Read the main window's position and size."""
+
+    def execute(self) -> dict[str, Any]:
+        from src.models.base import Rect
+
+        app = str(self.param("app", "WeChat"))
+        ok, rect, err = self.ctx.service("automation").get_window_rect(app)
+        if not ok or rect is None:
+            return {"found": False, "app": app, "reason": err or "未找到窗口",
+                    "x": None, "y": None, "width": None, "height": None}
+        return {"found": True, "app": app, "x": rect.x, "y": rect.y,
+                "width": rect.width, "height": rect.height}
+
+
+class SetWindowRectNode(BaseNode):
+    """Move and resize the main window."""
+
+    def execute(self) -> dict[str, Any]:
+        from src.models.base import Rect
+
+        app = str(self.param("app", "WeChat"))
+        rect = Rect(
+            x=int(self.param("x", 0) or 0),
+            y=int(self.param("y", 0) or 0),
+            width=int(self.param("width", 0) or 0),
+            height=int(self.param("height", 0) or 0),
+        )
+        if rect.width <= 0 or rect.height <= 0:
+            # A zero-sized window is unrecoverable through the UI, and macOS
+            # silently accepts it — better to refuse than to hand the operator
+            # an invisible application.
+            raise NodeError(f"窗口宽高必须为正: {rect.width}x{rect.height}")
+        ok = bool(self.ctx.service("automation").set_window_rect(app, rect))
+        return {"moved": ok, "app": app, "x": rect.x, "y": rect.y,
+                "width": rect.width, "height": rect.height}
+
+
+class _WindowActionNode(BaseNode):
+    """Shared plumbing for the single-call window actions."""
+
+    #: ABC method name, and the output key that reports it. Declared as a pair
+    #: rather than derived from the method name: ``minimize_window`` stripped
+    #: of its suffix gives ``minimize``, not the ``minimized`` the canvas shows.
+    action = ""
+    result_key = ""
+
+    def execute(self) -> dict[str, Any]:
+        app = str(self.param("app", "WeChat"))
+        method = getattr(self.ctx.service("automation"), self.action)
+        return {self.result_key: bool(method(app)), "app": app}
+
+
+class MinimizeWindowNode(_WindowActionNode):
+    action = "minimize_window"
+    result_key = "minimized"
+
+
+class MaximizeWindowNode(_WindowActionNode):
+    action = "maximize_window"
+    result_key = "maximized"
+
+
+class CloseWindowNode(_WindowActionNode):
+    action = "close_window"
+    result_key = "closed"
 
 
 class SetClipboardNode(BaseNode):
@@ -687,6 +843,109 @@ class UpdateSendResultNode(BaseNode):
         return {"updated": True, "tick_id": tick_id}
 
 
+class _ImageBackedNode(BaseNode):
+    """Shared resolution of the image a pixel operation should read.
+
+    An explicit ``haystack`` wins; otherwise the most recent ``capture`` /
+    ``perceive`` output in this run is used. A per-node variable would have
+    to be repeated on every node in the chain, and the overwhelmingly common
+    case is "match against the screenshot I just took".
+    """
+
+    def _haystack(self) -> str:
+        explicit = str(self.param("haystack", "") or "").strip()
+        if explicit:
+            return explicit
+        for name in ("screenshot_path", "image_path"):
+            value = self.ctx.scope.get(name)
+            if value and str(value).endswith((".png", ".jpg", ".jpeg")):
+                return str(value)
+        raise NodeError(
+            f"{type(self).__name__} 需要 haystack 参数，"
+            "或在本流程前面加一个 capture/perceive 节点提供截图"
+        )
+
+
+class FindImageNode(_ImageBackedNode):
+    """Locate a template image inside a screenshot."""
+
+    def execute(self) -> dict[str, Any]:
+        from .vision_match import find_template
+
+        needle = str(self.param("image", "")).strip()
+        if not needle:
+            raise NodeError("find_image 需要 image 参数")
+        result = find_template(
+            self._haystack(), needle,
+            threshold=float(self.param("threshold", 0.85) or 0.85),
+        )
+        return result.to_dict()
+
+
+class FindColorNode(_ImageBackedNode):
+    """Locate the centre of a colour region."""
+
+    def execute(self) -> dict[str, Any]:
+        from .vision_match import find_color
+
+        raw = str(self.param("rgb", "")).strip()
+        parts = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+        if len(parts) != 3:
+            raise NodeError(f"rgb 需要三个分量（例：20,120,220），收到 {raw!r}")
+        try:
+            rgb = tuple(int(p) for p in parts)
+        except ValueError as e:
+            raise NodeError(f"rgb 必须是整数: {raw!r}") from e
+        if not all(0 <= c <= 255 for c in rgb):
+            raise NodeError(f"rgb 分量需在 0-255 之间: {raw!r}")
+        return find_color(
+            self._haystack(), rgb,  # type: ignore[arg-type]
+            threshold=int(self.param("threshold", 30) or 30),
+        ).to_dict()
+
+
+class AssertPixelNode(_ImageBackedNode):
+    """Assert a pixel's colour, or just read it."""
+
+    def execute(self) -> dict[str, Any]:
+        from .vision_match import pixel_at
+
+        x = int(self.param("x", 0) or 0)
+        y = int(self.param("y", 0) or 0)
+        try:
+            actual = pixel_at(self._haystack(), x, y)
+        except (FileNotFoundError, IndexError, ValueError) as e:
+            return {"matched": False, "r": None, "g": None, "b": None,
+                    "actual": None, "reason": str(e)}
+
+        base: dict[str, Any] = {"r": actual[0], "g": actual[1], "b": actual[2],
+                                "actual": list(actual)}
+        raw = str(self.param("rgb", "") or "").strip()
+        if not raw:
+            # No expectation given: this is a read, not an assertion.
+            return {**base, "matched": True, "reason": "仅读取，未设置期望值"}
+
+        parts = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+        if len(parts) != 3:
+            raise NodeError(f"rgb 需要三个分量（例：20,120,220），收到 {raw!r}")
+        try:
+            expected = tuple(int(p) for p in parts)
+        except ValueError as e:
+            raise NodeError(f"rgb 必须是整数: {raw!r}") from e
+
+        tolerance = int(self.param("tolerance", 12) or 12)
+        distance = sum((a - b) ** 2 for a, b in zip(actual, expected)) ** 0.5
+        matched = distance <= tolerance
+        return {
+            **base,
+            "matched": matched,
+            "reason": (
+                f"色差 {distance:.1f} ≤ 容忍 {tolerance}" if matched
+                else f"色差 {distance:.1f} 超过容忍 {tolerance}（实际 {actual}，期望 {expected}）"
+            ),
+        }
+
+
 class LocateNode(BaseNode):
     """Resolve a screen point through the configured path.
 
@@ -770,13 +1029,29 @@ class VisionActNode(BaseNode):
                 time.sleep(0.2)
             if decision.text:
                 automation.set_clipboard_text(decision.text)
-                automation.send_keys("cmd+v")
+                # Previously the return value was dropped and `performed` was
+                # reported True regardless, so a paste that AppleScript
+                # rejected still looked like a success. Typing into the wrong
+                # field is worse than an error the operator can see.
+                pasted = bool(automation.send_keys("cmd+v"))
+                if not pasted:
+                    raise NodeError("粘贴失败：cmd+v 未生效，请检查辅助功能权限")
             outcome.update({"performed": True, "typed": decision.text[:120]})
         elif decision.action == "hotkey":
             ok = bool(automation.send_keys(decision.keys))
             outcome.update({"performed": ok, "keys": decision.keys})
         elif decision.action == "scroll":
-            outcome.update({"performed": False, "note": f"scroll {decision.direction} 未自动执行", "scroll": decision.direction})
+            # The pointer layer has scroll now, so this is no longer something
+            # to skip quietly: doing it and reporting failure is strictly
+            # better than reporting success for a gesture that never happened.
+            point = decision.points[0] if decision.points else None
+            if point is None:
+                raise NodeError(f"模型要求滚动 {decision.direction} 但未给出坐标")
+            clicks = SCROLL_CLICKS.get(decision.direction)
+            if clicks is None:
+                raise NodeError(f"未知的滚动方向 {decision.direction!r}")
+            scrolled = bool(automation.scroll_at(point["x"], point["y"], clicks))
+            outcome.update({"performed": scrolled, "scroll": decision.direction, "clicks": clicks})
         elif decision.action == "wait":
             seconds = float(self.param("wait_seconds", 1.0) or 1.0)
             time.sleep(seconds)
@@ -896,6 +1171,191 @@ class FileNode(BaseNode):
         return {"read": True, "path": str(target.relative_to(PROJECT_ROOT)), "content": target.read_text(encoding="utf-8", errors="replace")[:20000]}
 
 
+class LLMNode(BaseNode):
+    """Call a chat model with a freely configured prompt.
+
+    The existing :class:`GenerateReplyNode` is the only other way to reach a
+    model, and it hard-wires the WeChat persona, the pending-message scope and
+    the ``empty`` branch. That is the right shape for a reply bot and the wrong
+    shape for "summarise this OCR text", so the general case gets its own node
+    rather than growing parameters onto a domain node.
+
+    Wraps :class:`src.llm.openclaw_client.OpenClawClient` instead of building a
+    second transport: that client is already OpenAI-compatible, already handles
+    the ``/v1`` suffix and the empty-content case, and is what the rest of the
+    project talks to. No new dependency, and no model logic here — the node only
+    shapes parameters and returns the result.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        prompt = str(self.param("prompt", "")).strip()
+        if not prompt:
+            raise NodeError("llm 需要 prompt")
+
+        system = str(self.param("system", "") or "").strip()
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        # Resolve the provider before the sampling params, so a provider's
+        # defaults apply to anything the node left blank.
+        provider_id = str(self.param("provider", "") or "").strip()
+        provider = self._provider(provider_id) if provider_id else self._provider("")
+
+        # Only send what was configured: passing temperature=None makes some
+        # providers reject the request, and a 0 default would silently pin
+        # every flow to greedy decoding.
+        temperature = self.param("temperature", None)
+        if temperature is None or temperature == "":
+            temperature = (provider or {}).get("temperature")
+        if temperature is None or temperature == "":
+            temperature = None
+        else:
+            temperature = float(temperature)
+
+        # ``max_tokens`` has a spec default, so a blank parameter comes back as
+        # 1024 rather than empty; treat the spec default as "not set" so the
+        # provider can supply it.
+        max_tokens = int(self.param("max_tokens", 0) or 0)
+        if max_tokens in (0, 1024):
+            max_tokens = int((provider or {}).get("max_tokens") or 0) or max_tokens or 1024
+        model = str(self.param("model", "") or "").strip()
+        base_url = str(self.param("base_url", "") or "").strip()
+        timeout = float(self.param("timeout", 0) or 0) or float((provider or {}).get("timeout") or 0) or 0
+
+        client = self._client(model, base_url, max_tokens, system, provider)
+        text = client.chat(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout or None,
+        )
+        # chat() returns a message object when the model emitted tool calls.
+        # No tools are offered here, so anything non-text is a provider
+        # behaving unexpectedly and must not be reported as a reply.
+        text = text if isinstance(text, str) else ""
+        return {
+            "text": text,
+            "empty": not text.strip(),
+            "model": getattr(client, "model", model),
+        }
+
+    def _client(
+        self,
+        model: str,
+        base_url: str,
+        max_tokens: int,
+        system: str,
+        provider: dict[str, Any] | None = None,
+    ) -> Any:
+        """Build the client from node parameters and provider config.
+
+        Precedence: an explicit node parameter, then the provider row, then the
+        shared ``llm`` service, then the client's own defaults. A provider
+        carries the operator's gateway settings so a flow never hard-codes a
+        key; a node parameter still wins so one flow can pin a different model
+        without editing the provider everyone else shares.
+        """
+        from src.llm.openclaw_client import OpenClawClient
+
+        kwargs: dict[str, Any] = {"max_tokens": max_tokens}
+        if model:
+            kwargs["model"] = model
+        elif provider and provider.get("model"):
+            kwargs["model"] = provider["model"]
+        if base_url:
+            kwargs["base_url"] = base_url
+        elif provider and provider.get("base_url"):
+            kwargs["base_url"] = provider["base_url"]
+        if provider and provider.get("api_key"):
+            kwargs["api_key"] = provider["api_key"]
+        if system:
+            kwargs["system_prompt"] = system
+
+        # The shared client is an optimisation, not a requirement: a bare
+        # FlowExecutor has no services registered, and a node that demands one
+        # would fail there while working in the real runner. Absent service is
+        # not an error.
+        try:
+            override = self.ctx.service("llm")
+        except Exception:  # noqa: BLE001
+            override = None
+        if override is not None and not any(k in kwargs for k in ("model", "base_url")):
+            return override
+        return OpenClawClient(**kwargs)
+
+    def _provider(self, provider_id: str) -> dict[str, Any] | None:
+        """Look up a provider row, tolerating a store-less context.
+
+        ``provider_id`` empty means "the default row". A named provider that
+        does not exist is an error rather than a silent fall back to the
+        default: the author selected a gateway, and quietly calling a
+        different one is the exact class of bug this whole provider mechanism
+        exists to remove.
+        """
+        try:
+            from src.flow.store import get_store
+
+            store = get_store()
+        except Exception:  # noqa: BLE001
+            return None
+        try:
+            if provider_id:
+                row = store.get_provider(provider_id)
+                if row is None:
+                    raise NodeError(f"llm provider {provider_id!r} 不存在")
+                return row
+            return store.default_provider()
+        except NodeError:
+            raise
+        except Exception:  # noqa: BLE001
+            return None
+
+
+class TemplateNode(BaseNode):
+    """Render a Jinja2 template against the run scope.
+
+    Jinja2's own ``{{name}}`` is the fast path's syntax, so the two compose:
+    a template that only interpolates behaves identically either way, and
+    ``{% for %}`` / ``{% if %}`` / filters are available when the text needs
+    structure the interpolator deliberately does not have.
+
+    Autoescape stays off. Output is assembled text for a chat window or a
+    prompt, not HTML, and escaping would corrupt every ``&`` in a message
+    being forwarded. The caller renders for a human, not for a browser.
+    """
+
+    #: ``StrictUndefined`` because a template that silently renders an empty
+    #: string for a missing variable produces a subtly wrong message rather
+    #: than an obvious failure — the same reasoning as the expression evaluator.
+    def execute(self) -> dict[str, Any]:
+        source = str(self.param("template", ""))
+        if not source.strip():
+            raise NodeError("template 需要 template 参数")
+
+        from jinja2 import StrictUndefined
+        from jinja2.sandbox import SandboxedEnvironment
+
+        # Sandboxed: rendering operator-authored text must not be able to walk
+        # the object graph of the scope values. No loader is created, so a
+        # template cannot read files either.
+        env = SandboxedEnvironment(undefined=StrictUndefined, autoescape=False)
+        try:
+            rendered = env.from_string(source).render(**self.ctx.scope.snapshot())
+        except Exception as exc:  # noqa: BLE001
+            # Name the template error rather than the engine's: a missing
+            # variable is the common case and "StrictUndefined" tells the
+            # author nothing about which one.
+            raise NodeError(f"模板渲染失败: {type(exc).__name__}: {exc}") from exc
+
+        return {
+            "text": rendered,
+            "empty": not rendered.strip(),
+            "length": len(rendered),
+        }
+
+
 class ToolNode(BaseNode):
     """Invoke a tool from the existing :class:`ToolRegistry`."""
 
@@ -953,8 +1413,36 @@ def register_all(registry: NodeRegistry) -> NodeRegistry:
     # action
     spec("send_message", "发送消息", "动作", SendMessageNode, params=[_p("text", "textarea", "内容", required=True, help="支持 {{变量}} 插值"), _p("chat_name", "text", "会话名"), _p("interval", "number", "多段间隔秒", 1.5)], outputs=["sent_count", "results"], requires=["accessibility"], doc="向当前会话输入并发送文本。")
     spec("click", "点击", "动作", ClickNode, params=[_p("element", "text", "元素名"), _p("x", "number", "X"), _p("y", "number", "Y")], outputs=["clicked"], requires=["accessibility"], doc="点击坐标或元素库中命名元素的中心。")
+
+    # ── pointer gestures ──
+    _locate_params = [
+        _p("element", "text", "元素名"),
+        _p("x", "number", "X"),
+        _p("y", "number", "Y"),
+    ]
+
+    def _gesture(node_type: str, label: str, gesture: str, doc: str,
+                 extra: list[ParamSpec] | None = None) -> None:
+        handler = type(f"{node_type.title().replace('_', '')}Node", (PointerNode,), {"gesture": gesture})
+        spec(node_type, label, "动作", handler,
+             params=[*_locate_params, *(extra or [])],
+             outputs=["x", "y", "gesture"], requires=["accessibility"], doc=doc)
+
+    _gesture("hover", "悬停", "hover", "把指针移到目标位置，不点击。用于展开悬停菜单。")
+    _gesture("right_click", "右键点击", "right_click", "在目标位置按下右键，通常弹出上下文菜单。")
+    _gesture("double_click", "双击", "double_click", "在目标位置连续左键两次，常用于打开文件或进入目录。")
+    _gesture("drag", "拖拽", "drag", "从 (x,y) 按下并拖到 (x2,y2) 后抬起。duration_ms 控制拖动时长，过短会被当成瞬移而忽略。",
+             extra=[_p("x2", "number", "终点 X", required=True), _p("y2", "number", "终点 Y", required=True),
+                    _p("duration_ms", "number", "拖动毫秒", 500)])
+    _gesture("scroll", "滚动", "scroll", "在目标位置滚动滚轮。clicks 正数向上、负数向下，单位是「格」。",
+             extra=[_p("clicks", "number", "格数", -3, help="正数向上滚，负数向下滚")])
     spec("type_keys", "输入按键", "动作", TypeKeysNode, params=[_p("text", "text", "文本"), _p("keys", "text", "按键", help="cliclick 键位串，如 'kp:return'")], outputs=["success"], requires=["accessibility"], doc="剪贴板粘贴文本，或发送按键。")
     spec("activate_app", "激活应用", "动作", ActivateAppNode, params=[_p("app", "text", "应用名", "WeChat")], outputs=["activated"], doc="把应用切到前台。")
+    spec("window_rect", "读取窗口位置", "动作", WindowRectNode, params=[_p("app", "text", "应用名", "WeChat")], outputs=["x", "y", "width", "height", "found"], requires=["accessibility"], doc="读取窗口位置与大小。")
+    spec("set_window_rect", "调整窗口", "动作", SetWindowRectNode, params=[_p("app", "text", "应用名", "WeChat"), _p("x", "number", "X", 0), _p("y", "number", "Y", 0), _p("width", "number", "宽", required=True), _p("height", "number", "高", required=True)], outputs=["moved", "x", "y", "width", "height"], requires=["accessibility"], doc="移动并调整窗口大小。")
+    spec("minimize_window", "最小化窗口", "动作", MinimizeWindowNode, params=[_p("app", "text", "应用名", "WeChat")], outputs=["minimized"], requires=["accessibility"], doc="最小化主窗口。")
+    spec("maximize_window", "最大化窗口", "动作", MaximizeWindowNode, params=[_p("app", "text", "应用名", "WeChat")], outputs=["maximized"], requires=["accessibility"], doc="最大化主窗口，填充可用工作区。")
+    spec("close_window", "关闭窗口", "动作", CloseWindowNode, params=[_p("app", "text", "应用名", "WeChat")], outputs=["closed"], requires=["accessibility"], doc="关闭主窗口。不可撤销，请确认后再使用。")
     spec("set_clipboard", "写剪贴板", "动作", SetClipboardNode, params=[_p("text", "text", "内容")], outputs=["success"], doc="写入系统剪贴板。")
 
     # memory
@@ -972,6 +1460,25 @@ def register_all(registry: NodeRegistry) -> NodeRegistry:
                  _p("confidence", "number", "置信度阈值", 0.6)],
          outputs=["x", "y", "source", "confidence", "element_name"],
          doc="双路径定位：优先元素库(路径A)，失败可降级到视觉模型(路径B)。source 字段记录实际走了哪条。")
+    spec("find_image", "图像模板定位", "双路径", FindImageNode,
+         params=[_p("image", "text", "模板图路径", required=True),
+                 _p("haystack", "text", "搜索图路径", help="留空则用本次运行最近一次 capture 的截图"),
+                 _p("threshold", "number", "相似度阈值", 0.85)],
+         outputs=["found", "x", "y", "width", "height", "score", "count", "reason"],
+         doc="第三种定位方式：按像素模板在截图中查找位置。元素库和视觉模型都认不出的自绘控件用它。"),
+    spec("find_color", "颜色定位", "双路径", FindColorNode,
+         params=[_p("rgb", "text", "RGB 颜色", required=True, help="例：20,120,220"),
+                 _p("haystack", "text", "搜索图路径"),
+                 _p("threshold", "number", "色差容忍", 30)],
+         outputs=["found", "x", "y", "width", "height", "count", "reason"],
+         doc="按颜色查找区域中心。适合状态指示灯、纯色按钮。"),
+    spec("assert_pixel", "像素断言", "双路径", AssertPixelNode,
+         params=[_p("x", "number", "X", required=True), _p("y", "number", "Y", required=True),
+                 _p("rgb", "text", "期望 RGB", help="留空则只读取并返回实际颜色"),
+                 _p("tolerance", "number", "色差容忍", 12),
+                 _p("haystack", "text", "图片路径")],
+         outputs=["matched", "r", "g", "b", "actual", "reason"],
+         doc="断言某点颜色是否符合预期。用于确认界面状态而不依赖文字。")
     spec("vlm_act", "多模态操作", "多模态", VisionActNode,
          params=[_p("goal", "text", "操作目标", required=True),
                  _p("context", "text", "补充上下文"),
@@ -991,6 +1498,8 @@ def register_all(registry: NodeRegistry) -> NodeRegistry:
     # utility
     spec("http_request", "HTTP 请求", "通用", HttpRequestNode, params=[_p("url", "text", "URL", required=True), _p("method", "select", "方法", "GET", choices=["GET", "POST", "PUT", "DELETE"]), _p("headers", "textarea", "请求头", "{}"), _p("body", "textarea", "请求体"), _p("timeout", "number", "超时秒", 20)], outputs=["status", "body", "ok"], doc="发起 HTTP 请求。")
     spec("file", "文件读写", "通用", FileNode, params=[_p("mode", "select", "模式", "read", choices=["read", "write"]), _p("path", "text", "路径", required=True), _p("content", "textarea", "内容")], outputs=["content"], doc="在项目根目录内读写文本文件。")
+    spec("template", "模板渲染", "通用", TemplateNode, params=[_p("template", "textarea", "模板", required=True, raw=True, help="Jinja2 语法；{{var}} 与快速插值一致，另支持 {% for %} / {% if %} / 过滤器")], outputs=["text", "empty", "length"], doc="用 Jinja2 渲染多行文本。沙箱环境，未定义变量直接报错。")
+    spec("llm", "大模型调用", "通用", LLMNode, params=[_p("provider", "text", "Provider", help="留空用默认 provider；在设置页配置网关与密钥"), _p("prompt", "textarea", "提示词", required=True), _p("system", "textarea", "系统提示"), _p("model", "text", "模型", help="留空则用 provider 的模型"), _p("base_url", "text", "接口地址", help="留空则用 provider 的地址"), _p("temperature", "number", "温度", help="留空则不发送该参数"), _p("max_tokens", "number", "最大 token", 1024), _p("timeout", "number", "超时秒")], outputs=["text", "empty", "model"], doc="自由调用大模型。网关与密钥由设置页的 provider 管理，节点参数可覆盖。generate_reply 是本项目的回复专用节点。")
     spec("tool", "调用工具", "通用", ToolNode, params=[_p("name", "text", "工具名", required=True), _p("arguments", "textarea", "参数 JSON", "{}")], outputs=["result"], doc="调用 ToolRegistry 中已注册的工具。")
 
     return registry

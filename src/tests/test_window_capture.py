@@ -36,8 +36,36 @@ class MockCaptureAutomation(SystemAutomation):
         self._log("get_window_rect", app_name)
         return True, Rect(x=0, y=0, width=800, height=600), ""
 
-    def click_at(self, x: int, y: int) -> bool:
-        self._log("click_at", x, y)
+    def click_at(self, x: int, y: int, button: str = "left", count: int = 1) -> bool:
+        self._log("click_at", x, y, button=button, count=count)
+        return True
+
+    def move_to(self, x: int, y: int) -> bool:
+        self._log("move_to", x, y)
+        return True
+
+    def drag_to(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 500) -> bool:
+        self._log("drag_to", x1, y1, x2, y2, duration_ms=duration_ms)
+        return True
+
+    def scroll_at(self, x: int, y: int, clicks: int) -> bool:
+        self._log("scroll_at", x, y, clicks)
+        return True
+
+    def set_window_rect(self, app_name: str, rect) -> bool:
+        self._log("set_window_rect", app_name, rect)
+        return True
+
+    def minimize_window(self, app_name: str) -> bool:
+        self._log("minimize_window", app_name)
+        return True
+
+    def maximize_window(self, app_name: str) -> bool:
+        self._log("maximize_window", app_name)
+        return True
+
+    def close_window(self, app_name: str) -> bool:
+        self._log("close_window", app_name)
         return True
 
     def send_keys(self, key_spec: str) -> bool:
@@ -86,16 +114,48 @@ class TestWindowCapture(unittest.TestCase):
             'kCGWindowNumber': window_id,
         }
 
-    def test_validate_skips_when_pytesseract_import_fails(self):
+    def test_validate_skips_when_ocr_engine_import_fails(self):
+        """Validation is a second gate, not a single point of failure.
+
+        The primary OCR runs through qwen-vl-ocr, so an unavailable local
+        engine must not block capture.
+        """
         original_import = __import__
 
-        def fail_pytesseract(name, *args, **kwargs):
-            if name == "pytesseract":
+        def fail_ocr(name, *args, **kwargs):
+            if name == "src.ocr.vision_ocr":
                 raise ImportError("broken optional dependency")
             return original_import(name, *args, **kwargs)
 
-        with patch("builtins.__import__", side_effect=fail_pytesseract):
+        with patch("builtins.__import__", side_effect=fail_ocr):
             self.assertTrue(self.capture._validate_wechat_screenshot("unused.png"))
+
+    def test_validate_rejects_image_without_wechat_markers(self):
+        """Text alone is not proof of WeChat — any app has text.
+
+        The old fallback was ``bool(left_text)``, which passed on whatever was
+        on screen; a marker whitelist is what makes the check mean something.
+        """
+        elements = [MagicMock(text=t) for t in ("Safari", "Bookmarks", "Reading List")]
+        with patch("src.ocr.vision_ocr.VisionOCREngine") as mock_engine:
+            mock_engine.return_value.recognize.return_value = elements
+            self.assertFalse(self.capture._validate_wechat_screenshot("any.png"))
+
+    def test_validate_accepts_image_with_wechat_marker(self):
+        elements = [
+            MagicMock(text="Q. 搜索"),
+            MagicMock(text="公众号"),
+            MagicMock(text="深圳大件事"),
+        ]
+        with patch("src.ocr.vision_ocr.VisionOCREngine") as mock_engine:
+            mock_engine.return_value.recognize.return_value = elements
+            self.assertTrue(self.capture._validate_wechat_screenshot("wechat.png"))
+
+    def test_validate_rejects_blank_image(self):
+        """No text at all means the pixels are not a usable WeChat window."""
+        with patch("src.ocr.vision_ocr.VisionOCREngine") as mock_engine:
+            mock_engine.return_value.recognize.return_value = []
+            self.assertFalse(self.capture._validate_wechat_screenshot("blank.png"))
 
     def test_window_capture_failure_falls_back_to_region(self):
         rect = Rect(x=100, y=200, width=1200, height=900)
@@ -114,7 +174,35 @@ class TestWindowCapture(unittest.TestCase):
             ("activate_app", ("WeChat",), {}),
             self.automation.calls,
         )
-        mock_sleep.assert_called_once_with(0.5)
+        # Fallback is only trusted after frontmost is confirmed, so the
+        # verification round trip is part of the contract, not an extra.
+        self.assertIn(("get_frontmost_app", ("WeChat",), {}), self.automation.calls)
+        self.assertTrue(mock_sleep.called)
+
+    def test_region_capture_refused_when_wechat_not_foreground(self):
+        """A region capture while another app is frontmost yields the wrong pixels.
+
+        The old code activated WeChat, slept a fixed 0.5s and captured anyway,
+        so an activation that silently did nothing produced a screenshot of
+        whatever was on top — reported as success. Refusing is the whole point.
+        """
+        rect = Rect(x=100, y=200, width=1200, height=900)
+        self.automation.capture_screen = MagicMock(
+            side_effect=[(False, "could not create image from window")]
+        )
+        self.automation.activate_app = MagicMock(return_value=False)
+        self.automation.get_frontmost_app = MagicMock(return_value=(False, "Safari"))
+
+        with patch("src.capture.window_capture.time.sleep"):
+            with self.assertRaises(RuntimeError) as ctx:
+                self.capture._do_capture(rect, window_id=47)
+
+        self.assertIn("前台", str(ctx.exception))
+        # The region attempt must never happen: it is the one that lies.
+        self.automation.capture_screen.assert_called_once()
+        self.assertEqual(
+            self.automation.capture_screen.call_args.kwargs.get("window_id"), 47
+        )
 
     @patch.object(WindowCapture, '_validate_wechat_screenshot', return_value=True)
     @patch('src.capture.window_capture.Quartz')

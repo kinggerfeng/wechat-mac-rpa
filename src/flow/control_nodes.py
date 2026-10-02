@@ -101,6 +101,7 @@ class WhileNode(BaseNode):
 
         if not condition:
             self.ctx.scope.bind(counter_var, 0)
+            self.ctx.scope.clear_loop()
             return {"__branch__": "exit", "iterations": iterations, "condition": expression}
 
         iterations += 1
@@ -150,10 +151,18 @@ class ForeachNode(BaseNode):
 
         if index >= len(items):
             self.ctx.scope.bind(state_var, 0)
+            # The loop is over: its bindings must stop shadowing the run scope,
+            # otherwise a later node reading the same name gets the last item
+            # instead of what it would otherwise see.
+            self.ctx.scope.clear_loop()
             return {"__branch__": "done", "total": len(items), "index": index}
 
-        self.ctx.scope.bind(var, items[index])
-        self.ctx.scope.bind(f"{var}_index", index)
+        # Loop layer, not the global layer: a foreach binding is more local than
+        # a node output of the same name, and `foreach` is a per-pass node
+        # execution (the back edge re-enters it), so there is no matching
+        # ``pop`` — the exit branch above is what clears it.
+        self.ctx.scope.bind_loop(var, items[index])
+        self.ctx.scope.bind_loop(f"{var}_index", index)
         self.ctx.scope.bind(state_var, index + 1)
         return {
             "__branch__": "item",

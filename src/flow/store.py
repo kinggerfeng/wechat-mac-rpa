@@ -12,6 +12,7 @@ the store is written to be safe under that concurrency without a connection pool
 
 from __future__ import annotations
 
+import base64
 import json
 import sqlite3
 import threading
@@ -115,6 +116,29 @@ CREATE TABLE IF NOT EXISTS schedules (
     updated_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 CREATE INDEX IF NOT EXISTS ix_schedules_enabled ON schedules(enabled);
+
+-- LLM 网关配置。存在 DB 而不是 .env，是因为换 provider 是运营动作，不该
+-- 需要改文件重启进程——同一个产品要能对接客户自己的网关。api_key 走
+-- obfuscate 而非明文：它挡不住有文件读权限的人，但能挡住 grep 日志、导出
+-- 配置、以及截图粘进工单。
+CREATE TABLE IF NOT EXISTS llm_providers (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    base_url     TEXT NOT NULL,
+    api_key      TEXT NOT NULL DEFAULT '',
+    model        TEXT NOT NULL DEFAULT '',
+    temperature  REAL,
+    max_tokens   INTEGER,
+    timeout      REAL,
+    is_default   INTEGER NOT NULL DEFAULT 0,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    note         TEXT NOT NULL DEFAULT '',
+    last_ok_at   TEXT,
+    last_error   TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS ix_llm_providers_default ON llm_providers(is_default);
 """
 
 
@@ -477,6 +501,161 @@ class RpaStore:
                 (status, run_id, schedule_id),
             )
 
+    # -- llm providers ----------------------------------------------------
+
+    #: Obfuscation only. Reversible so a provider row can be used to build a
+    #: client without a second copy of the key, and deliberately *not* framed
+    #: as security: anything able to read rpa.db can read the key. It exists so
+    #: the key does not show up in `sqlite3` dumps, log greps, config exports
+    #: and screenshots pasted into tickets.
+    _KEY_SALT = b"rpa-studio-llm-provider-v1"
+
+    @classmethod
+    def _obfuscate(cls, raw: str) -> str:
+        if not raw:
+            return ""
+        return base64.urlsafe_b64encode(bytes(
+            b ^ cls._KEY_SALT[i % len(cls._KEY_SALT)]
+            for i, b in enumerate(raw.encode("utf-8"))
+        )).decode("ascii")
+
+    @classmethod
+    def _deobfuscate(cls, stored: str) -> str:
+        if not stored:
+            return ""
+        try:
+            # urlsafe_b64encode drops the '=' padding; without restoring it the
+            # decode raises or truncates, and the key comes back as garbage
+            # that then fails at request time instead of here.
+            padded = stored + "=" * (-len(stored) % 4)
+            data = base64.urlsafe_b64decode(padded.encode("ascii"))
+            # XOR is its own inverse, so decoding is the second half of the
+            # same transform — base64 is only the transport, not the cipher.
+            return bytes(
+                b ^ cls._KEY_SALT[i % len(cls._KEY_SALT)]
+                for i, b in enumerate(data)
+            ).decode("utf-8")
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def save_provider(self, provider: dict[str, Any]) -> dict[str, Any]:
+        """Insert or update a provider row.
+
+        ``api_key`` is stored obfuscated and never returned in clear to the UI
+        — listing returns a mask so the settings page can show "configured"
+        without re-exposing it. The mask is what lets an edit save the form
+        without the browser ever holding the real key.
+        """
+        pid = provider.get("id") or f"llmp_{uuid.uuid4().hex[:10]}"
+        api_key = provider.get("api_key", "")
+        with self.connect() as conn:
+            existing = conn.execute("SELECT * FROM llm_providers WHERE id=?", (pid,)).fetchone()
+            # An empty api_key on update means "keep the stored one" — the UI
+            # submits a mask, and writing the mask through would break the row.
+            if api_key:
+                api_key = self._obfuscate(api_key)
+            elif existing:
+                api_key = existing["api_key"]
+
+            payload = (
+                provider.get("name", pid),
+                provider.get("base_url", ""),
+                api_key,
+                provider.get("model", ""),
+                provider.get("temperature"),
+                provider.get("max_tokens"),
+                provider.get("timeout"),
+                int(provider.get("enabled", 1)),
+                provider.get("note", ""),
+            )
+            is_default = int(provider.get("is_default", 0))
+            if existing:
+                conn.execute(
+                    "UPDATE llm_providers SET name=?, base_url=?, api_key=?, model=?,"
+                    " temperature=?, max_tokens=?, timeout=?, enabled=?, note=?, is_default=?,"
+                    " updated_at=datetime('now','localtime') WHERE id=?",
+                    (*payload, is_default, pid),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO llm_providers (name, base_url, api_key, model, temperature,"
+                    " max_tokens, timeout, enabled, note, is_default, id)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    (*payload, is_default, pid),
+                )
+            # Demote the others *after* the row carries its own flag, or the
+            # new default ends up cleared along with everyone else.
+            if is_default:
+                conn.execute("UPDATE llm_providers SET is_default=0 WHERE id<>?", (pid,))
+        # Return the masked row, not the clear one: a caller that does
+        # `store.save_provider({**saved, "name": ...})` would otherwise feed a
+        # clear key back in and obfuscate it a second time.
+        return next(
+            (p for p in self.list_providers() if p["id"] == pid), {}
+        )
+
+    def get_provider(self, provider_id: str) -> dict[str, Any] | None:
+        """Provider with a **clear** api_key, for building a client."""
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM llm_providers WHERE id=?", (provider_id,)).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["api_key"] = self._deobfuscate(data.get("api_key", ""))
+        return data
+
+    def list_providers(self, enabled_only: bool = False) -> list[dict[str, Any]]:
+        """Providers for the settings UI, with the key masked."""
+        where = "WHERE enabled=1" if enabled_only else ""
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM llm_providers {where} ORDER BY is_default DESC, name"
+            ).fetchall()
+        out = []
+        for row in rows:
+            data = dict(row)
+            key = self._deobfuscate(data.get("api_key", ""))
+            data["api_key_set"] = bool(key)
+            data["api_key"] = _mask_key(key)
+            out.append(data)
+        return out
+
+    def delete_provider(self, provider_id: str) -> bool:
+        with self.connect() as conn:
+            cursor = conn.execute("DELETE FROM llm_providers WHERE id=?", (provider_id,))
+        return cursor.rowcount > 0
+
+    def mark_provider_result(self, provider_id: str, ok: bool, error: str = "") -> None:
+        with self.connect() as conn:
+            if ok:
+                conn.execute(
+                    "UPDATE llm_providers SET last_ok_at=datetime('now','localtime'),"
+                    " last_error='' WHERE id=?",
+                    (provider_id,),
+                )
+            else:
+                conn.execute(
+                    "UPDATE llm_providers SET last_error=? WHERE id=?",
+                    (str(error)[:500], provider_id),
+                )
+
+    def default_provider(self) -> dict[str, Any] | None:
+        """The provider a flow gets when none is named.
+
+        Falls back to the first enabled row so a single-provider install
+        needs no default flag, and returns None (not an error) when the table
+        is empty — an install with no LLM configured is legitimate.
+        """
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM llm_providers WHERE enabled=1 ORDER BY is_default DESC, name LIMIT 1"
+            ).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["api_key"] = self._deobfuscate(data.get("api_key", ""))
+        return data
+
 
 def _element_row(row: sqlite3.Row) -> dict[str, Any]:
     data = dict(row)
@@ -484,6 +663,21 @@ def _element_row(row: sqlite3.Row) -> dict[str, Any]:
     data["anchor"] = _load(data.pop("anchor_json"))
     data["meta"] = _load(data.pop("meta_json"))
     return data
+
+
+def _mask_key(key: str) -> str:
+    """What the settings UI shows in place of a stored key.
+
+    A real mask rather than a boolean, so a form round-trip can send it back
+    unchanged without the browser ever having held the key. ``save_provider``
+    treats any non-empty value as "replace", so the UI must omit this field
+    on edit rather than echo it.
+    """
+    if not key:
+        return ""
+    if len(key) <= 8:
+        return "*" * len(key)
+    return f"{key[:4]}{'*' * 6}{key[-4:]}"
 
 
 def _load(raw: Any, default: Any = None) -> Any:

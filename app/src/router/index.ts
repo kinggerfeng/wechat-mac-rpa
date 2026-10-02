@@ -49,6 +49,12 @@ const router = createRouter({
       meta: { title: "日志", icon: "Document" },
     },
     {
+      path: "/providers",
+      name: "providers",
+      component: () => import("../pages/ProviderPage.vue"),
+      meta: { title: "大模型网关", icon: "Cpu" },
+    },
+    {
       path: "/permissions",
       name: "permissions",
       component: () => import("../pages/PermissionPage.vue"),

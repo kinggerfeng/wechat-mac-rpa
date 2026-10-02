@@ -452,6 +452,7 @@ def validate_flow(graph: dict[str, Any], known_types: Iterable[str] | None = Non
             )
 
     issues.extend(_validate_paths(parsed, graph.get("default_path")))
+    _validate_variable_ambiguity(graph, list(parsed.values()), issues)
 
     return issues
 
@@ -572,6 +573,85 @@ def _validate_condition(edge: Edge, issues: list[ValidationIssue]) -> None:
                 "bad_condition",
                 f"连线 {edge.id} 的条件 {edge.condition!r} 无法解析，应为可求值的表达式",
                 edge_id=edge.id,
+            )
+        )
+
+
+#: ``{{ ... }}`` occurrences in any text a node parameter or edge carries.
+_INTERPOLATION_SCAN_RE = re.compile(r"\{\{(.*?)\}\}", re.S)
+
+#: Names a flow may bind at runtime that never appear in a node's declared
+#: ``outputs``: the start node's inputs, ``set_var`` targets and loop variables.
+#: Excluded from the ambiguity check because they are *supposed* to share the
+#: flat namespace — that is what ``set_var`` and ``foreach`` are for.
+_DYNAMIC_BINDERS = frozenset({"set_var", "foreach", "call_flow", "start"})
+
+
+def _referenced_names(text: Any) -> set[str]:
+    """Bare variable heads referenced by ``{{...}}`` in ``text``.
+
+    A dotted reference is ignored: ``{{n_perceive.messages}}`` names one node
+    explicitly and is exactly the disambiguated form this check is steering
+    authors toward.
+    """
+    if not isinstance(text, str) or "{{" not in text:
+        return set()
+    names: set[str] = set()
+    for body in _INTERPOLATION_SCAN_RE.findall(text):
+        expr = body.strip()
+        if not expr or "." in expr:
+            continue
+        # Only a plain head counts; `{{a + b}}` is an expression, not a
+        # reference to a variable literally named "a + b".
+        if expr.isidentifier():
+            names.add(expr)
+    return names
+
+
+def _validate_variable_ambiguity(
+    graph: dict[str, Any], nodes: list[Node], issues: list[ValidationIssue]
+) -> None:
+    """Warn when a bare ``{{name}}`` could mean more than one node's output.
+
+    Node outputs are bound both flat and node-scoped. The flat binding is
+    last-writer-wins, so a flow whose ``perceive`` and ``get_unreplied`` both
+    emit ``messages`` and which reads ``{{messages}}`` gets whichever ran last
+    — correct until an edge is re-ordered, then silently wrong.
+
+    A warning, not an error: a flow with one producer is legitimate and should
+    not be forced to write ``{{n_perceive.messages}}`` everywhere. The message
+    names every candidate so the fix is obvious.
+    """
+    producers: dict[str, list[str]] = {}
+    for node in nodes:
+        if node.type in _DYNAMIC_BINDERS:
+            continue
+        for out in node.outputs or []:
+            producers.setdefault(out, []).append(node.id)
+
+    ambiguous = {name: ids for name, ids in producers.items() if len(ids) > 1}
+
+    used: dict[str, list[str]] = {}
+    for node in nodes:
+        for value in (node.params or {}).values():
+            for name in _referenced_names(value):
+                used.setdefault(name, []).append(node.id)
+    for edge in graph.get("edges") or []:
+        for name in _referenced_names(edge.get("condition")):
+            used.setdefault(name, []).append(edge.id)
+
+    for name, consumers in used.items():
+        candidates = ambiguous.get(name)
+        if not candidates:
+            continue
+        where = "、".join(sorted(set(consumers)))
+        issues.append(
+            ValidationIssue(
+                "warning",
+                "ambiguous_variable",
+                f"变量 {{{{{name}}}}} 由多个节点产出（{'、'.join(candidates)}），"
+                f"裸引用取最后执行的那个；建议写成 {{{{{candidates[0]}.{name}}}}} 明确来源。"
+                f"引用位置：{where}",
             )
         )
 

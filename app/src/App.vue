@@ -5,6 +5,7 @@ import {
   Aim,
   AlarmClock,
   Clock,
+  Cpu,
   Document,
   Lock,
   Odometer,
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { name: "runs", title: "运行记录", icon: Clock },
   { name: "elements", title: "元素库", icon: Aim },
   { name: "schedules", title: "计划任务", icon: AlarmClock },
+  { name: "providers", title: "大模型网关", icon: Cpu },
   { name: "logs", title: "日志", icon: Document },
   { name: "permissions", title: "权限与设置", icon: Lock },
 ];

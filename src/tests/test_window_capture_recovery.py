@@ -32,8 +32,36 @@ class MockCaptureAutomation(SystemAutomation):
         self._log("get_window_rect", app_name)
         return True, Rect(x=0, y=0, width=800, height=600), ""
 
-    def click_at(self, x: int, y: int) -> bool:
-        self._log("click_at", x, y)
+    def click_at(self, x: int, y: int, button: str = "left", count: int = 1) -> bool:
+        self._log("click_at", x, y, button=button, count=count)
+        return True
+
+    def move_to(self, x: int, y: int) -> bool:
+        self._log("move_to", x, y)
+        return True
+
+    def drag_to(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 500) -> bool:
+        self._log("drag_to", x1, y1, x2, y2, duration_ms=duration_ms)
+        return True
+
+    def scroll_at(self, x: int, y: int, clicks: int) -> bool:
+        self._log("scroll_at", x, y, clicks)
+        return True
+
+    def set_window_rect(self, app_name: str, rect) -> bool:
+        self._log("set_window_rect", app_name, rect)
+        return True
+
+    def minimize_window(self, app_name: str) -> bool:
+        self._log("minimize_window", app_name)
+        return True
+
+    def maximize_window(self, app_name: str) -> bool:
+        self._log("maximize_window", app_name)
+        return True
+
+    def close_window(self, app_name: str) -> bool:
+        self._log("close_window", app_name)
         return True
 
     def send_keys(self, key_spec: str) -> bool:

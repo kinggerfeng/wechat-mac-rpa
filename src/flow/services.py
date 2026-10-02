@@ -49,6 +49,12 @@ def register_default_services(ctx: FlowContext, dry_run: bool = False) -> None:
     ctx.register_service_factory("logger", _build_logger)
     ctx.register_service_factory("tools", _build_tools)
     ctx.register_service_factory("case_db", _build_case_db)
+    # Shared LLM client for the generic ``llm`` node. The node falls back to
+    # building its own when its parameters name a model or a base_url, so a
+    # flow can address two endpoints; this only keeps the common case to one
+    # client. Built lazily because constructing it needs an OpenAI-compatible
+    # endpoint, and a flow with no llm node must not require one.
+    ctx.register_service_factory("llm", _build_llm)
 
 
 def _load_env() -> None:
@@ -202,6 +208,11 @@ def _build_logger() -> Any:
 
     return get_logger()
 
+
+def _build_llm() -> Any:
+    from src.llm.openclaw_client import OpenClawClient
+
+    return OpenClawClient()
 
 def _build_tools() -> Any:
     from src.tools import get_registry, register_builtin_tools

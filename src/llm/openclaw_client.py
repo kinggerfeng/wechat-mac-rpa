@@ -27,14 +27,21 @@ class OpenClawClient:
 
     def __init__(
         self,
-        base_url: str = "http://127.0.0.1:18790",
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
-        model: str = "kimi-for-coding",
+        model: Optional[str] = None,
         max_tokens: int = 1024,
         system_prompt: Optional[str] = None,
         timeout: float = 30.0,
     ):
         OpenAI = _get_openai_client()
+        # Explicit arguments win; otherwise fall back to the environment, then
+        # to the original local-gateway defaults. ``.env`` is read by
+        # ``run_bot.py`` and by ``src.flow.services._load_env``; the flow
+        # engine's bare ``FlowExecutor`` does neither, so the defaults stay
+        # usable with no configuration at all.
+        base_url = base_url or os.getenv("OPENCLAW_BASE_URL") or "http://127.0.0.1:18790"
+        model = model or os.getenv("OPENCLAW_MODEL") or "kimi-for-coding"
         # openai v2.x 不会自动加 /v1 前缀，需手动处理
         base_url = base_url.rstrip("/")
         if not base_url.endswith("/v1"):

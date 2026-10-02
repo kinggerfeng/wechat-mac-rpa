@@ -122,28 +122,113 @@ def evaluate_condition(expression: str, scope: "FlowScope") -> bool:
 
 
 class FlowScope:
-    """Flat name -> value scope with dotted reads."""
+    """Layered name -> value scope with dotted reads.
+
+    A flat scope cannot express ``{{item}}`` inside a loop when a node upstream
+    already bound ``item`` for its own reasons: the loop overwrites the node's
+    value and the node's value overwrites the loop's on the next pass. Both are
+    real — the loop variable is *more local*, so it must win — and a flat dict
+    has no way to say so.
+
+    Layers, innermost first:
+
+    1. ``loop``   — foreach item / while counter, pushed and popped by the
+       loop nodes themselves so a name cannot outlive its iteration
+    2. ``local``  — sub-flow locals; a nested run gets a fresh scope, so this
+       is what keeps a sub-flow from seeing its caller's variables
+    3. ``global`` — start inputs, ``set_var``, node outputs
+
+    Node outputs are additionally addressable as ``{{node_id.field}}`` via the
+    ``nodes`` layer, which no other layer can shadow: two nodes both named
+    ``messages`` are reachable as ``n_perceive.messages`` and
+    ``n_unreplied.messages``, while the bare ``messages`` stays last-writer-wins
+    for convenience. :meth:`ambiguous` reports exactly when that convenience
+    is unsafe, so the validator can point at it instead of letting it bite.
+    """
 
     def __init__(self, initial: dict[str, Any] | None = None) -> None:
-        self._values: dict[str, Any] = dict(initial or {})
+        self._global: dict[str, Any] = dict(initial or {})
+        self._local: dict[str, Any] = {}
+        self._loop: dict[str, Any] = {}
+        #: Outer iterations' loop bindings, so a nested loop can restore them
+        #: instead of letting the inner one clobber them on the way out.
+        self._loop_stack: list[dict[str, Any]] = []
+        self._nodes: dict[str, Any] = {}
         self._lock = threading.RLock()
 
     def bind(self, name: str, value: Any) -> None:
         if not name:
             return
         with self._lock:
-            self._values[name] = value
+            self._global[name] = value
+
+    def bind_local(self, name: str, value: Any) -> None:
+        """Bind into the sub-flow layer, shadowed by loop bindings."""
+        if not name:
+            return
+        with self._lock:
+            self._local[name] = value
+
+    def bind_loop(self, name: str, value: Any) -> None:
+        """Bind into the loop layer, which shadows everything else."""
+        if not name:
+            return
+        with self._lock:
+            self._loop[name] = value
+
+    def push_loop(self, bindings: dict[str, Any] | None = None) -> None:
+        """Enter a loop iteration, stashing the enclosing one."""
+        with self._lock:
+            self._loop_stack.append(self._loop)
+            self._loop = dict(bindings or {})
+
+    def pop_loop(self) -> None:
+        """Leave a loop iteration, restoring the enclosing one's bindings.
+
+        Restoring rather than clearing matters for nested loops: an inner
+        ``item`` must not outlive its loop, and must not destroy the outer
+        loop's ``item`` on the way out. Popping an unbalanced frame is a no-op
+        rather than an error, so a handler that returns early cannot leave the
+        scope permanently shadowed by a loop that is no longer running.
+        """
+        with self._lock:
+            self._loop = self._loop_stack.pop() if self._loop_stack else {}
+
+    def clear_loop(self) -> None:
+        """Drop every loop binding.
+
+        For loops that re-enter a node per pass rather than iterating inside one
+        call — there is no matching ``pop``, so the exit branch clears instead.
+        Clearing rather than restoring is what stops a finished loop from
+        shadowing the run scope for the rest of the flow.
+        """
+        with self._lock:
+            self._loop = {}
+            self._loop_stack = []
+
+    def bind_node(self, node_id: str, value: Any) -> None:
+        """Address a node's whole result as ``{{node_id}}`` / ``{{node_id.field}}``."""
+        if not node_id:
+            return
+        with self._lock:
+            self._nodes[node_id] = value
 
     def bind_all(self, values: dict[str, Any]) -> None:
         with self._lock:
             for name, value in values.items():
                 if name:
-                    self._values[name] = value
+                    self._global[name] = value
+
+    def _lookup(self, head: str) -> Any:
+        for layer in (self._loop, self._local, self._global):
+            if head in layer:
+                return layer[head]
+        return self._nodes.get(head, _MISSING)
 
     def get(self, dotted: str) -> Any:
         head, _, tail = dotted.partition(".")
         with self._lock:
-            value = self._values.get(head, _MISSING)
+            value = self._lookup(head)
         if value is _MISSING:
             return None
         if not tail:
@@ -152,18 +237,69 @@ class FlowScope:
 
     def has(self, name: str) -> bool:
         with self._lock:
-            return name in self._values
+            return self._lookup(name) is not _MISSING
 
     def snapshot(self) -> dict[str, Any]:
+        """Flat view for the canvas and the trace panel.
+
+        Outer layers are applied first so inner ones overwrite them, which is
+        the same precedence :meth:`get` uses. The snapshot is a display and
+        interpolation surface, not a resolution surface: two nodes writing
+        ``messages`` still collapse here, and only ``{{node_id.messages}}``
+        can tell them apart.
+        """
         with self._lock:
-            return dict(self._values)
+            merged: dict[str, Any] = {}
+            merged.update(self._global)
+            merged.update(self._local)
+            merged.update(self._loop)
+            return merged
+
+    def export(self) -> dict[str, Any]:
+        """Flat view including node-scoped results, for the run result.
+
+        The execution result is a contract: the API, the trace panel and
+        ``result.scope["n_perceive"]`` all read it. Node ids must survive it,
+        otherwise every ``{{node_id.field}}`` reference becomes unresolvable
+        after the run.
+        """
+        merged = self.snapshot()
+        with self._lock:
+            merged.update(self._nodes)
+            return merged
+
+    def layers(self) -> list[tuple[str, dict[str, Any]]]:
+        """Named layers innermost-first, for diagnostics and the variable picker."""
+        with self._lock:
+            return [
+                ("loop", dict(self._loop)),
+                ("local", dict(self._local)),
+                ("global", dict(self._global)),
+                ("node", dict(self._nodes)),
+            ]
+
+    def ambiguous(self, name: str) -> bool:
+        """True when a bare ``{{name}}`` hides more than one binding source.
+
+        Reported, not blocked. A flow that reads ``messages`` from a single
+        perceive node is correct and should not be forced to qualify; one that
+        reads it from two different nodes is picking a winner by execution
+        order, and the author deserves to know before it changes under them.
+        """
+        with self._lock:
+            sources = [
+                layer for layer in (self._loop, self._local, self._global)
+                if name in layer
+            ]
+            node_hits = [nid for nid, val in self._nodes.items()
+                         if isinstance(val, dict) and name in val]
+            return len(sources) > 1 or bool(node_hits)
 
     def __contains__(self, name: object) -> bool:
         return isinstance(name, str) and self.has(name)
 
     def __iter__(self) -> Iterator[str]:
-        with self._lock:
-            return iter(dict(self._values))
+        return iter(self.snapshot())
 
 
 #: Attributes a flow may read off a list without calling a method. ``count`` is
@@ -260,8 +396,16 @@ class FlowContext:
             self.services[name] = instance
 
     def bind_outputs(self, node: Node, outputs: dict[str, Any]) -> None:
-        """Bind a node's declared outputs, plus the whole result under its id."""
-        self.scope.bind(node.id, outputs)
+        """Bind a node's declared outputs flat, plus the whole result under its id.
+
+        Two bindings, two purposes. The flat one keeps the RPA-ergonomic
+        ``{{chat_name}}`` that every seeded flow and node default already uses.
+        The node-scoped one makes ``{{n_perceive.messages}}`` reachable so that
+        two nodes both emitting ``messages`` can still be told apart — the flat
+        name is last-writer-wins, and :meth:`FlowScope.ambiguous` exists to make
+        that visible rather than mysterious.
+        """
+        self.scope.bind_node(node.id, outputs)
         for name in node.outputs or list(outputs):
             if name in outputs:
                 self.scope.bind(name, outputs[name])

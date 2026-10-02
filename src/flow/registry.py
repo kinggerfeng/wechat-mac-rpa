@@ -31,6 +31,12 @@ class ParamSpec:
     choices: list[Any] = field(default_factory=list)
     help: str = ""
     required: bool = False
+    #: Skip ``{{...}}`` interpolation and hand the raw string to the node.
+    #: For parameters whose value *is* a template language: Jinja2 filters
+    #: (``{{ n | upper }}``) are parsed as a bitwise-or by the expression
+    #: evaluator and fail before the node ever sees them. A per-parameter flag
+    #: rather than a per-node exemption, because a node may have both kinds.
+    raw: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -41,6 +47,7 @@ class ParamSpec:
             "choices": self.choices,
             "help": self.help,
             "required": self.required,
+            "raw": self.raw,
         }
 
 
@@ -118,7 +125,7 @@ class BaseNode:
         """
         if name in self.params and self.params[name] not in (None, ""):
             value = self.params[name]
-            if isinstance(value, str) and self.ctx is not None:
+            if isinstance(value, str) and self.ctx is not None and not self._is_raw(name):
                 from .expr import interpolate
 
                 return interpolate(value, self.ctx.scope)
@@ -129,6 +136,10 @@ class BaseNode:
                     return spec.default
                 break
         return default
+
+    def _is_raw(self, name: str) -> bool:
+        """Whether this parameter opts out of interpolation."""
+        return any(p.name == name and p.raw for p in self.spec.params)
 
     def resolve(self, name: str, default: Any = None) -> Any:
         """Param value, falling back to the run scope under the same name."""

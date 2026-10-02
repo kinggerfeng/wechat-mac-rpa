@@ -118,9 +118,33 @@ class WindowCapture:
             and rect.height >= self.min_effective_height
         )
 
-    def _activate_wechat(self) -> None:
-        """尝试激活微信应用"""
-        self.automation.activate_app("WeChat")
+    def _activate_wechat(self) -> bool:
+        """尝试激活微信应用。
+
+        Returns:
+            bool: 激活是否成功。调用方必须检查返回值——丢弃它会让「激活失败
+            但流程继续」变成静默的状态，区域截图随后会截到遮挡物。
+        """
+        try:
+            return bool(self.automation.activate_app("WeChat"))
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("[WindowCapture] 激活微信异常: %s", e)
+            return False
+
+    def _ensure_wechat_foreground(self) -> bool:
+        """Make WeChat the frontmost app, and confirm it actually got there.
+
+        ``activate_app`` is a request, not a fact: AppleScript returns 0 for
+        "I asked the app to activate" and the frontmost check is a separate
+        round trip that can disagree. Region capture reads the *screen*, so it
+        silently produces another app's pixels unless frontmost is verified.
+        """
+        if self._activate_wechat():
+            time.sleep(0.3)
+        ok, front = self.automation.get_frontmost_app("WeChat")
+        if not ok:
+            _logger.warning("[WindowCapture] 前台校验失败: frontmost=%r", front)
+        return ok
 
     def _get_scale_factor(self) -> float:
         """获取主屏幕的 Retina 缩放因子"""
@@ -166,8 +190,15 @@ class WindowCapture:
     def _do_capture(self, rect: Rect, window_id: int) -> None:
         """执行截图命令。
 
-        优先使用 -l <windowid> 只截取指定窗口（不受其他窗口覆盖影响），
-        fallback 到 -R 按坐标截取。
+        优先使用 -l <windowid> 只截取指定窗口（不受其他窗口覆盖影响）。
+
+        ``-l`` 对微信是必然失败的——窗口有透明合成层，screencapture 报
+        "could not create image from window"，四次实测无一成功。所以区域截图
+        不是可有可无的降级，而是**本机唯一能出图的路径**。它读的是屏幕而非
+        窗口，因此只有在确认微信确实在前台时才可信：否则截到的是遮挡物，
+        而后续 OCR 和视觉动作会基于这张错图全部算错，且不报错。
+
+        这就是为什么降级前必须校验前台，而不是 sleep 一下就当没事发生。
         """
         ok, err = self.automation.capture_screen(
             rect, self.output_path, window_id=window_id if window_id else None
@@ -175,51 +206,68 @@ class WindowCapture:
         if ok:
             return
 
-        _logger.warning("[WindowCapture] 按窗口截图失败，降级为区域截图: %s", err)
-        self._activate_wechat()
-        time.sleep(0.5)
+        _logger.info("[WindowCapture] 按窗口截图不可用(%s)，改用区域截图", err)
+
+        if not self._ensure_wechat_foreground():
+            raise RuntimeError(
+                f"窗口截图不可用（{err}），且无法确认微信处于前台。"
+                "区域截图会截到遮挡窗口的内容，已中止以免产生错误截图。"
+                "请手动将微信置于前台后重试。"
+            )
+
         fallback_ok, fallback_err = self.automation.capture_screen(
             rect, self.output_path, window_id=None
         )
         if not fallback_ok:
             raise RuntimeError(f"截图失败: window={err}; region={fallback_err}")
+        _logger.info("[WindowCapture] 区域截图成功（已确认微信在前台）")
+
+    #: 微信特有的界面词。用来确认「这张图是微信」而不是「这张图有文字」——
+    #: 后者对任何应用都成立，等于没有校验。
+    _WECHAT_MARKERS = ("搜索", "微信", "通讯录", "聊天信息", "WeChat", "朋友圈")
 
     def _validate_wechat_screenshot(self, image_path: str) -> bool:
         """验证截图内容确实是微信窗口。
 
-        方法：OCR 截图顶部区域，检查是否有微信特有的 UI 元素
-        （如左侧边栏的"搜索"、聊天列表、或标题栏文字）。
-        这是一种轻量级的布局验证，不依赖具体聊天内容。
+        用项目自带的 :class:`VisionOCREngine`（macOS Vision 框架，零新增依赖）
+        读整图，要求命中微信特有词。整图而非裁剪顶部：搜索框在 2x Retina 下
+        位于物理像素 x≈166 起，裁剪区域写死像素会在缩放变化时切空，而区域
+        截图本身又不保证窗口是原点的。
 
-        注：Tesseract 未安装时跳过验证（graceful degrade），
-        不阻断主流程，因为主 OCR 使用 qwen-vl-ocr / Vision 框架。
+        OCR 不可用时放行：主 OCR 走 qwen-vl-ocr，验证只是防「截到遮挡物」
+        的第二道闸，不该成为单点故障。
         """
         try:
-            import pytesseract
-        except ImportError as e:
-            _logger.debug("pytesseract 不可用，跳过截图内容验证: %s", e)
+            from src.ocr.vision_ocr import VisionOCREngine
+        except Exception as e:  # noqa: BLE001
+            _logger.debug("VisionOCREngine 不可用，跳过截图内容验证: %s", e)
             return True
 
         try:
-            from PIL import Image
-            img = Image.open(image_path)
-            # 截取顶部 80px 区域（标题栏 + 搜索框位置）
-            top_region = img.crop((0, 0, min(img.width, 400), min(img.height, 80)))
-            text = pytesseract.image_to_string(top_region, lang='chi_sim+eng').strip()
-            # 微信窗口顶部通常有"搜索"或当前聊天名
-            wechat_indicators = {'搜索', '微信', 'WeChat'}
-            if any(ind in text for ind in wechat_indicators):
-                return True
-            # fallback：检查左侧边栏区域是否有微信图标特征
-            left_region = img.crop((0, 0, min(img.width, 60), min(img.height, 200)))
-            left_text = pytesseract.image_to_string(left_region, lang='chi_sim+eng').strip()
-            return bool(left_text)  # 左侧有文字/图标说明是微信
-        except pytesseract.TesseractNotFoundError:
-            _logger.debug("Tesseract 未安装，跳过截图内容验证")
+            elements = VisionOCREngine().recognize(image_path)
+        except Exception as e:  # noqa: BLE001
+            _logger.warning("截图验证 OCR 失败，跳过验证: %s", e)
             return True
-        except Exception as e:
-            _logger.warning(f"截图验证异常: {e}")
+
+        texts = [
+            getattr(el, "text", "") or ""
+            for el in elements
+            if getattr(el, "text", "")
+        ]
+        if not texts:
+            _logger.warning("截图验证: OCR 未识别到任何文字")
             return False
+
+        hits = [m for m in self._WECHAT_MARKERS if any(m in t for t in texts)]
+        if hits:
+            _logger.info("截图验证通过，命中微信特征词: %s", hits)
+            return True
+
+        _logger.warning(
+            "截图验证失败: 识别到 %d 段文字但无微信特征词，样本=%s",
+            len(texts), texts[:8],
+        )
+        return False
 
     def capture(self) -> CaptureResult:
         """
@@ -274,7 +322,9 @@ class WindowCapture:
         window_rect, window_id = result
 
         if not self._is_effective_window(window_rect):
-            # 尝试激活微信并等待恢复
+            # 尝试激活微信并等待恢复。激活结果不检查也没关系：下面会重新
+            # _find_window 拿几何，激活失败会表现为「窗口依旧太小」并抛出，
+            # 而不是被静默跳过。
             self._activate_wechat()
             time.sleep(2.0)
             result = self._find_window()

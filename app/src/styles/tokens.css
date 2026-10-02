@@ -1,0 +1,75 @@
+/* Design tokens. The palette is the one the existing console already used, so
+   the migration does not change how the app looks on first launch — only how
+   the code is organised. */
+:root {
+  --ink: #182322;
+  --muted: #788581;
+  --line: #dce3de;
+  --green: #357b63;
+  --green-dark: #1f5546;
+  --rail: #193b34;
+  --rail-active: #2c5d4d;
+  --orange: #cf714c;
+  --paper: #f8faf7;
+  --canvas: #eef2ee;
+
+  /* Path badges. The two location strategies must be distinguishable at a
+     glance in the canvas, so they get a hue as well as a label. */
+  --path-element: #357b63;
+  --path-element-soft: #e4efe9;
+  --path-vision: #6b5bb5;
+  --path-vision-soft: #ece9f7;
+  --path-auto: #b07d2b;
+  --path-auto-soft: #f7efdd;
+
+  --font-sans: "Avenir Next", "SF Pro Display", "PingFang SC", sans-serif;
+  --font-serif: Georgia, "Times New Roman", "Songti SC", serif;
+  --font-mono: "SFMono-Regular", Consolas, monospace;
+
+  --radius: 3px;
+  --shadow-card: 0 8px 24px rgba(29, 62, 49, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: var(--shadow-card);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #809087;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--muted);
+}

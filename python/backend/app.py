@@ -2,10 +2,13 @@ import asyncio
 import fcntl
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BOT_PID_FILE = PROJECT_ROOT / "bot.pid"
 BOT_LOG_FILE = PROJECT_ROOT / "data" / "logs" / "desktop-bot.log"
+CASE_DB_PATH = PROJECT_ROOT / "data" / "cases.db"
 
 try:
     for line in (PROJECT_ROOT / ".env").read_text(encoding="utf-8").splitlines():
@@ -54,18 +58,33 @@ class BotProcessManager:
             return {
                 "running": pid is not None,
                 "pid": pid,
-                "last_tick": None,
+                # These two used to be hard-coded to None/"unknown" while the UI
+                # displayed them as if they were real readings. They are cheap to
+                # compute and a dashboard that lies about liveness is worse than
+                # one that admits it does not know.
+                "last_tick": _last_tick(),
                 "model": os.environ.get("LLM_MODEL", "deepseek-v4-flash"),
-                "wechat_status": "unknown",
+                "wechat_status": _wechat_status(),
             }
 
-    def start(self) -> dict[str, Any]:
+    def start(self, skip_preflight: bool = False) -> dict[str, Any]:
         with self._lock:
             if self._process is not None and self._process.poll() is None:
                 return {"status": "already_running", "pid": self._process.pid}
             existing_pid = self._locked_bot_pid()
             if existing_pid is not None:
                 return {"status": "already_running", "pid": existing_pid}
+
+            if not skip_preflight:
+                check = _permission_preflight()
+                if not check.get("ok"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "message": "缺少 macOS 权限，拒绝启动（否则 bot 会静默失效）",
+                            "preflight": check,
+                        },
+                    )
 
             BOT_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
             environment = os.environ.copy()
@@ -114,15 +133,139 @@ class BotProcessManager:
 bot_manager = BotProcessManager()
 
 
+# ── real liveness readings, replacing the two hard-coded placeholders ──
+
+_last_tick_cache: tuple[float, str | None] = (0.0, None)
+
+
+def _last_tick() -> str | None:
+    """Timestamp of the most recent row in ``tick_log``, cached briefly.
+
+    Read on every status poll, and the status endpoint is polled every three
+    seconds; a 2s cache keeps that off SQLite without making the reading stale
+    enough to mislead. Returns ``None`` when the bot has never ticked — which is
+    a real answer, unlike the old unconditional ``None``.
+    """
+    global _last_tick_cache
+    cached_at, cached = _last_tick_cache
+    now = time.time()
+    if cached is not None and now - cached_at < 2.0:
+        return cached
+    if not CASE_DB_PATH.exists():
+        _last_tick_cache = (now, None)
+        return None
+    try:
+        conn = sqlite3.connect(f"{CASE_DB_PATH.as_uri()}?mode=ro", uri=True, timeout=2)
+        try:
+            row = conn.execute("SELECT MAX(created_at) FROM tick_log").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    value = row[0] if row and row[0] else None
+    _last_tick_cache = (now, value)
+    return value
+
+
+_wechat_cache: tuple[float, str] = (0.0, "")
+
+
+def _wechat_status() -> str:
+    """Whether a usable WeChat window is on screen.
+
+    Uses the same window query the capture path uses, so the answer matches what
+    perception will actually find rather than guessing from a process list.
+    """
+    global _wechat_cache
+    now = time.time()
+    if _wechat_cache[1] and now - _wechat_cache[0] < 5.0:
+        return _wechat_cache[1]
+    status = "unknown"
+    try:
+        import Quartz
+
+        from src.models.base import Rect  # noqa: F401  (kept for parity with the capture path)
+
+        windows = Quartz.CGWindowListCopyWindowInfo(
+            Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+            Quartz.kCGNullWindowID,
+        )
+        for window in windows or ():
+            if window.get("kCGWindowOwnerName") in ("WeChat", "微信"):
+                bounds = window.get("kCGWindowBounds", {})
+                width = int(bounds.get("Width", 0))
+                height = int(bounds.get("Height", 0))
+                if width >= 800 and height >= 600:
+                    status = "ready"
+                else:
+                    status = f"window_too_small:{width}x{height}"
+                break
+        else:
+            status = "not_running"
+    except ImportError:
+        status = "check_unavailable"
+    except Exception:  # noqa: BLE001
+        status = "check_failed"
+    _wechat_cache = (now, status)
+    return status
+
+
+def _permission_preflight() -> dict[str, Any]:
+    """Screen recording + accessibility. Cheap and prompt-free, so it is safe to
+    run on every start request — which is exactly where it belongs, because the
+    alternative is a bot that starts cleanly and then silently does nothing."""
+    try:
+        from src.flow.permissions import preflight
+
+        return preflight()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from src.flow.seed import seed
+    from src.flow.store import get_store
+
+    # First boot writes the shipped flows so the canvas is never empty, and the
+    # scheduler starts here rather than on first request so a schedule created
+    # last session is already armed when the app comes back up.
+    try:
+        seed(get_store())
+    except Exception:  # noqa: BLE001 - a read-only data dir must not block startup
+        pass
+    try:
+        from src.flow.scheduler import get_scheduler
+
+        get_scheduler().start()
+    except Exception:  # noqa: BLE001
+        pass
+
     yield
+
+    try:
+        from src.flow.scheduler import get_scheduler
+
+        get_scheduler().stop()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from src.flow.runner import get_run_manager
+
+        get_run_manager().abort_all()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         await asyncio.to_thread(bot_manager.stop)
     except HTTPException as exc:
         if exc.status_code != 409:
             raise
 
+
+# rpa_api imports src.flow at module level, which is a repository-root package.
+# uvicorn is started with cwd=PROJECT_ROOT but does not put it on sys.path.
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 app = FastAPI(title="WeChat Mac RPA Desktop API", lifespan=lifespan)
 app.add_middleware(
@@ -139,6 +282,11 @@ app.add_middleware(
 )
 
 
+from .rpa_api import router as rpa_router  # noqa: E402
+
+app.include_router(rpa_router)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -149,9 +297,41 @@ def get_status() -> dict[str, Any]:
     return bot_manager.status()
 
 
+@app.get("/api/dashboard/summary")
+def dashboard_summary() -> dict[str, int | float | str]:
+    today = date.today().isoformat()
+    if not CASE_DB_PATH.exists():
+        return {"date": today, "ticks": 0, "replies": 0, "avg_score": 0, "skipped": 0, "skip_rate": 0}
+
+    conn = sqlite3.connect(f"{CASE_DB_PATH.as_uri()}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            """SELECT COUNT(*) AS total,
+                      SUM(CASE WHEN should_reply=1 THEN 1 ELSE 0 END) AS replied,
+                      COALESCE(ROUND(AVG(CASE WHEN judge_score>0 THEN judge_score END), 1), 0) AS avg_score,
+                      SUM(CASE WHEN skip_reason IS NOT NULL THEN 1 ELSE 0 END) AS skipped
+               FROM tick_log WHERE date(created_at)=?""",
+            (today,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    total = row["total"] or 0
+    skipped = row["skipped"] or 0
+    return {
+        "date": today,
+        "ticks": total,
+        "replies": row["replied"] or 0,
+        "avg_score": row["avg_score"],
+        "skipped": skipped,
+        "skip_rate": round(skipped * 100 / max(total, 1)),
+    }
+
+
 @app.post("/api/bot/start")
-def start_bot() -> dict[str, Any]:
-    return bot_manager.start()
+def start_bot(skip_preflight: bool = False) -> dict[str, Any]:
+    return bot_manager.start(skip_preflight=skip_preflight)
 
 
 @app.post("/api/bot/stop")

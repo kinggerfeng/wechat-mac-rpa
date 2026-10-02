@@ -1,11 +1,14 @@
 # 核心运行依赖
 openai>=2.45.0
 defusedxml>=0.7.1
-numpy==1.24.3
+# 数值栈：1.24.3 / 1.2.1 这些旧版本没有 3.12+ 的 wheel（numpy 1.24.3 的构建后端
+# 依赖 distutils，而 distutils 在 Python 3.12 已被移出标准库），在 3.12 及以上
+# 只能从源码构建并必然失败。已确认仓库内零处使用 numpy 1.x 专有 API。
+numpy>=2.0
 sqlalchemy>=2.0.51,<3.0.0
-scikit-learn==1.2.1
-scipy>=1.10.0,<1.16
-Pillow>=12.3.0,<13.0.0
+scikit-learn>=1.5
+scipy>=1.15
+Pillow>=12.3.0
 requests>=2.34.2
 httpx>=0.28.1
 beautifulsoup4>=4.15.0
@@ -14,6 +17,11 @@ beautifulsoup4>=4.15.0
 pyautogui>=0.9.54
 pytesseract>=0.3.13
 pyobjc-framework-Vision>=12.2.1
+# src/capture/window_capture.py、src/ocr/vision_ocr.py、src/action/login_recovery.py
+# 直接 import 这三个框架；只装 Vision 会在 import 期就 ModuleNotFoundError。
+pyobjc-framework-Quartz>=12.2.1
+pyobjc-framework-Cocoa>=12.2.1
+pyobjc-framework-ApplicationServices>=12.2.1
 
 # 智能家居工具
 tinytuya>=1.19.0

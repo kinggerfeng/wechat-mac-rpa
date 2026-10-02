@@ -25,8 +25,18 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
 from .context import FlowContext, FlowScope, evaluate_condition
+from .expr import interpolate
 from .registry import BaseNode, NodeRegistry, get_node_registry
-from .schema import Edge, Flow, FlowError, Node, NodeAborted, NodeError, validate_flow
+from .schema import (
+    BRANCH_PORTS,
+    Edge,
+    Flow,
+    FlowError,
+    Node,
+    NodeAborted,
+    NodeError,
+    validate_flow,
+)
 
 #: Key a node may return to choose its next port without raising, e.g.
 #: ``return {"__branch__": "true", "value": ok}`` from a condition node. Chosen
@@ -193,7 +203,13 @@ class FlowExecutor:
             entry = str(graph.get("entry") or "")
             if entry not in nodes:
                 raise FlowError(f"入口节点 {entry!r} 不存在")
-            self._walk(entry, nodes, edges, result)
+            # A loop, not a single call: a ``parallel`` node hands back where
+            # the flow continues after the join, and dropping that return value
+            # would end the run one node early — every branch executed, the
+            # join fired, and nothing after it ever ran.
+            current = entry
+            while current:
+                current = self._walk(current, nodes, edges, result)
         except FlowAborted:
             result.status = "aborted"
         except (FlowError, NodeError) as exc:
@@ -230,7 +246,15 @@ class FlowExecutor:
         nodes: dict[str, Node],
         edges: dict[str, list[Edge]],
         result: RunResult,
-    ) -> None:
+        stop_at_join: bool = False,
+    ) -> str:
+        """Run nodes from ``node_id`` until the walk ends.
+
+        Returns the node id the *caller* should continue from, or ``""`` when
+        this walk is finished. A linear flow never uses the return value; a
+        ``parallel`` node's branch walks do, which is how a branch tells its
+        fork "I stopped at this join" instead of running through the barrier.
+        """
         assert self.ctx is not None
         current = node_id
         while current:
@@ -243,6 +267,15 @@ class FlowExecutor:
             node = nodes.get(current)
             if node is None:
                 raise FlowError(f"节点 {current!r} 不存在")
+
+            if stop_at_join and node.type == "join":
+                # The barrier itself belongs to the fork, which runs it once
+                # every branch has arrived. Running it here would execute the
+                # join N times, once per branch.
+                return node.id
+
+            if node.type == "parallel":
+                return self._run_parallel(node, nodes, edges, result)
 
             if node.disabled:
                 self._emit_skip(node)
@@ -259,7 +292,7 @@ class FlowExecutor:
             except (NodeError, FlowError, Exception) as exc:  # noqa: BLE001
                 current = self._handle_error(node, exc, edges, result)
                 if current is _FAIL:
-                    return
+                    return ""
                 continue
 
             self.ctx.bind_outputs(node, outputs)
@@ -269,11 +302,186 @@ class FlowExecutor:
                 if chosen
                 else self._next(node.id, edges, result)
             )
+        return ""
 
-    def _execute(self, node: Node, result: RunResult) -> dict[str, Any]:
+    def _run_parallel(
+        self,
+        node: Node,
+        nodes: dict[str, Node],
+        edges: dict[str, list[Edge]],
+        result: RunResult,
+    ) -> str:
+        """Fan out to every connected branch, then run the join once.
+
+        Branches share one scope — that is the point of a fan-in — and each one
+        ends by reporting the ``join`` it stopped at. All of them have to report
+        the *same* join, or there is no single barrier to wait at; the validator
+        catches that at save time, and this re-checks it because a saved graph
+        can predate the rule.
+        """
+        assert self.ctx is not None
+        entries = [e.target for e in edges.get(node.id, ())
+                   if e.source_port in BRANCH_PORTS]
+        if not entries:
+            raise FlowError(f"parallel 节点 {node.id} 没有连出任何分支")
+
+        mode = str(self._param_of(node, "mode", "sequential"))
+        tolerant = str(self._param_of(node, "on_error", "fail")) == "continue"
+        # The fork is scheduler-level: its handler deliberately refuses to run,
+        # so the span is emitted here instead of by ``_execute``. Without it the
+        # trace would show three branches and a join and no sign of the thing
+        # that tied them together.
+        span = Span(
+            run_id=result.run_id,
+            node_id=node.id,
+            node_type=node.type,
+            name=node.name or node.type,
+            attempt=1,
+            inputs={"mode": mode, "on_error": self._param_of(node, "on_error", "fail")},
+        )
+        self._emit(span)
+        fork_started = time.monotonic()
+        # Shared across branch threads. A list append is atomic under the GIL,
+        # but the pair of lists is read together below, so the lock keeps a
+        # reader from seeing a join recorded without its failure or vice versa.
+        guard = threading.Lock()
+        reached: list[str] = []
+        failures: list[str] = []
+
+        def run(entry: str) -> None:
+            # A node failure does not propagate out of ``_walk``: the handler
+            # records it on the run result and returns "stop". So a branch that
+            # failed is indistinguishable from one that simply ran out of
+            # edges — unless the result is inspected, which is what the
+            # snapshot below is for.
+            before = (result.status, result.error, result.failed_node)
+            try:
+                at = self._walk(entry, nodes, edges, result, stop_at_join=True)
+                with guard:
+                    if result.status == "error" and result.status != before[0]:
+                        failures.append(f"{entry}: {result.error}")
+                    elif at:
+                        reached.append(at)
+            except FlowAborted:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                with guard:
+                    failures.append(f"{entry}: {exc}")
+            finally:
+                if tolerant and result.status == "error" and before[0] != "error":
+                    # One branch failing is not the whole run failing. Leaving
+                    # ``result.status`` at "error" here would make a run report
+                    # failure no matter how the other branches went, and would
+                    # point ``failed_node`` at a node the author never wrote.
+                    result.status, result.error, result.failed_node = before
+
+        if mode == "parallel" and len(entries) > 1:
+            workers = [threading.Thread(target=run, args=(e,), name=f"flow-branch-{i}")
+                       for i, e in enumerate(entries)]
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+        else:
+            for entry in entries:
+                run(entry)
+
+        def finish(status: str, outputs: dict[str, Any], error: str | None = None) -> None:
+            span.status = status
+            span.outputs = outputs
+            span.error = error
+            span.ended_at = time.time()
+            span.duration_ms = int((time.monotonic() - fork_started) * 1000)
+            self._emit(span)
+
+        if failures and not tolerant:
+            message = f"parallel 节点 {node.id} 的分支失败: {'; '.join(failures)}"
+            finish("error", {"branches": len(entries)}, message)
+            result.status = "error"
+            result.error = message
+            result.failed_node = node.id
+            return ""
+        if not reached:
+            message = (
+                f"parallel 节点 {node.id} 的所有分支都失败，没有分支到达 join 节点"
+                if failures else
+                f"parallel 节点 {node.id} 的分支都没有走到 join 节点，无法汇合"
+            )
+            finish("error", {"branches": len(entries), "failures": failures}, message)
+            raise FlowError(message)
+        unique = set(reached)
+        if len(unique) > 1:
+            message = (f"parallel 节点 {node.id} 的分支汇聚到了不同的 join 节点: "
+                       f"{'、'.join(sorted(unique))}")
+            finish("error", {"branches": len(entries), "reached": sorted(unique)}, message)
+            raise FlowError(message)
+        join_id = reached[0]
+        if join_id not in nodes:
+            message = f"parallel 节点 {node.id} 的 join 节点 {join_id!r} 不存在"
+            finish("error", {"branches": len(entries)}, message)
+            raise FlowError(message)
+
+        join_node = nodes[join_id]
+        if join_node.disabled:
+            self._emit_skip(join_node)
+        else:
+            # The barrier runs exactly once, here, after every branch arrived.
+            # Running it inside each branch instead would execute it N times and
+            # let the first arrival continue past the join while the others are
+            # still running.
+            joined = self._execute(join_node, result, extra={
+                "branches": len(entries),
+                "failed_branches": len(failures),
+                "failures": failures,
+                "join": join_id,
+            })
+            # ``_walk`` normally binds what a node returns; this path calls
+            # ``_execute`` directly, so without this the join's own outputs
+            # never reach the scope and ``{{join.branches}}`` is undefined.
+            self.ctx.bind_outputs(join_node, joined)
+        summary = {
+            "branches": len(entries),
+            "failed_branches": len(failures),
+            "failures": failures,
+            "join": join_id,
+            "mode": mode,
+        }
+        self.ctx.bind_outputs(node, summary)
+        finish("ok", summary)
+        return self._next(join_id, edges, result)
+
+    def _param_of(self, node: Node, name: str, default: Any) -> Any:
+        """Read a control-flow parameter straight off the graph.
+
+        ``parallel`` is handled by the executor rather than by its handler — the
+        node body has no work of its own — so its settings are read here instead
+        of through a ``BaseNode.param()`` call that would need an instance.
+        Interpolated the same way, so ``on_error: "{{policy}}"`` still works.
+        """
+        value = node.params.get(name)
+        if value is None or str(value).strip() == "":
+            return default
+        if isinstance(value, str) and self.ctx is not None:
+            return interpolate(value, self.ctx.scope)
+        return value
+
+    def _execute(
+        self,
+        node: Node,
+        result: RunResult,
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run one node, emitting a ``running`` span and a final one.
+
+        ``extra`` is how the scheduler hands a node facts it is not in a
+        position to know: the ``join`` node reports how many branches arrived,
+        and that number exists only in the fork. Merged into the params the
+        handler is built with, so the node reads it the same way as any other
+        declared parameter rather than through a side channel.
+        """
         assert self.ctx is not None
         spec = self.registry.get(node.type)
-        instance = spec.handler(node.params)
+        instance = spec.handler({**node.params, **(extra or {})})
         instance.ctx = self.ctx
         # The node's graph id. A loop needs it to key its iteration counter: a
         # handler instance is rebuilt for every attempt, so id(instance) is a

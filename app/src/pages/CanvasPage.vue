@@ -539,6 +539,8 @@ function onRecorded(flowId: string): void {
         :issues="selectedNode ? flow.issuesByNode(selectedNode.id) : []"
         :incoming="incomingEdges"
         :targets="targets"
+        :graph="flow.draft"
+        :spec-for="flow.specFor"
         @patch="(patch) => selectedNodeId && flow.updateNode(selectedNodeId, patch)"
         @set-path="setPath"
         @remove="removeSelected"

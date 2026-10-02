@@ -5,11 +5,19 @@ import {
   Aim,
   AlarmClock,
   Clock,
+  Collection,
   Cpu,
   Document,
+  DocumentChecked,
+  List,
   Lock,
+  Notebook,
   Odometer,
+  Picture,
+  ScaleToOriginal,
   Share,
+  Switch,
+  TrendCharts,
   VideoPause,
   VideoPlay,
 } from "@element-plus/icons-vue";
@@ -29,7 +37,13 @@ interface NavItem {
   icon: unknown;
 }
 
-const navItems: NavItem[] = [
+/**
+ * Two groups in one rail. The engine pages drive the machine; the cases pages
+ * read `data/cases.db` and are about what the bot already did. Keeping them
+ * visually separated matters because a click on the wrong one is either
+ * harmless (a filter) or not (starting a run).
+ */
+const engineNav: NavItem[] = [
   { name: "overview", title: "运行总览", icon: Odometer },
   { name: "flows", title: "流程", icon: Share },
   { name: "runs", title: "运行记录", icon: Clock },
@@ -40,8 +54,30 @@ const navItems: NavItem[] = [
   { name: "permissions", title: "权限与设置", icon: Lock },
 ];
 
-const visibleNav = computed(() => navItems.filter((item) => item.name !== "canvas"));
-const activeName = computed(() => (route.name === "canvas" ? "flows" : String(route.name ?? "")));
+const casesNav: NavItem[] = [
+  { name: "ticks", title: "Tick 记录", icon: List },
+  { name: "ground-truth", title: "真值对比", icon: ScaleToOriginal },
+  { name: "reviews", title: "案例库", icon: Collection },
+  { name: "screenshots", title: "截图", icon: Picture },
+  { name: "benchmarks", title: "Benchmark", icon: TrendCharts },
+  { name: "experiments", title: "实验 A/B", icon: Switch },
+  { name: "code-audit", title: "代码审计", icon: DocumentChecked },
+  { name: "wiki-review", title: "Wiki 审核", icon: Notebook },
+];
+
+/**
+ * A detail route highlights its list parent, so the rail never goes fully
+ * unselected while you are three levels deep.
+ */
+const activeName = computed(() => {
+  const current = String(route.name ?? "");
+  const parent = route.meta?.parent as string | undefined;
+  if (current === "canvas") return "flows";
+  return parent ?? current;
+});
+
+const visibleNav = computed(() => [...engineNav, ...casesNav]);
+const casesStart = engineNav.length;
 const currentTitle = computed(() => (route.meta?.title as string | undefined) ?? "控制台");
 
 const missingPermissions = computed(
@@ -71,17 +107,20 @@ onUnmounted(() => engine.stopPolling());
     <aside class="rail" :class="{ open: navOpen }">
       <div class="brand-mark"><span>W</span></div>
       <div class="rail-rule" />
-      <router-link
-        v-for="item in visibleNav"
-        :key="item.name"
-        class="rail-button"
-        :class="{ selected: activeName === item.name }"
-        :to="{ name: item.name }"
-        :title="item.title"
-        @click="navOpen = false"
-      >
-        <el-icon><component :is="item.icon" /></el-icon>
-      </router-link>
+      <nav class="rail-nav">
+        <template v-for="(item, index) in visibleNav" :key="item.name">
+          <div v-if="index === casesStart" class="rail-group">数据 / 标注</div>
+          <router-link
+            class="rail-button"
+            :class="{ selected: activeName === item.name }"
+            :to="{ name: item.name }"
+            :title="item.title"
+            @click="navOpen = false"
+          >
+            <el-icon><component :is="item.icon" /></el-icon>
+          </router-link>
+        </template>
+      </nav>
       <div class="rail-bottom">RPA<br /><b>DESK</b></div>
     </aside>
 
@@ -148,6 +187,38 @@ onUnmounted(() => engine.stopPolling());
   background: var(--rail);
   color: #e6eee8;
   padding: 22px 0 18px;
+}
+
+/* Sixteen rail entries no longer fit a laptop viewport, and hiding the overflow
+   silently would make the cases pages undiscoverable. Scroll instead, and keep
+   the brand mark pinned by giving the scroller the flexible box. */
+.rail-nav {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 10px;
+}
+
+.rail-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.rail-group {
+  margin: 12px 0 6px;
+  color: #6e8579;
+  font-size: 8px;
+  letter-spacing: 0.4px;
+  line-height: 1.3;
+  text-align: center;
+  width: 58px;
+  border-top: 1px solid #3c5a4d;
+  padding-top: 8px;
 }
 
 .brand-mark {

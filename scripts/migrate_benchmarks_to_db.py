@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""迁移 P0/P2/P4 硬编码 case → database。"""
+"""迁移 P0/P2/P4 硬编码 case → database。
+
+注意表名：目标是 ``bench_*_cases``（``case_db.py`` 建表、``CaseDB.list_benchmark_cases``
+读的就是这一组）。这个脚本原先写的是 ``benchmark_*_cases``——一组谁也不建、谁也不读的
+表名，于是每次执行都在第一条 INSERT 上 `no such table`，而 exit code 是 0，
+看起来像迁移成功。
+"""
 import json
 import sys
 from pathlib import Path
@@ -14,7 +20,7 @@ def migrate_tool_decision(db: CaseDB):
     from src.tests.test_tool_decision_benchmark import BENCHMARK_CASES as _OLD_TOOL_CASES
     conn = db._get_conn()
     for c in _OLD_TOOL_CASES:
-        conn.execute("""INSERT OR REPLACE INTO benchmark_tool_cases
+        conn.execute("""INSERT OR REPLACE INTO bench_tool_cases
             (case_name, user_message, should_call_memory, category, notes, evaluation_mode)
             VALUES (?, ?, ?, ?, ?, ?)""", (
             c.case_name, c.user_message,
@@ -42,7 +48,7 @@ def migrate_reply_quality(db: CaseDB):
         if hasattr(c, 'rubric') and c.rubric and hasattr(c.rubric, 'instructions'):
             rubric_name = c.rubric.instructions[:50]
 
-        conn.execute("""INSERT OR REPLACE INTO benchmark_reply_cases
+        conn.execute("""INSERT OR REPLACE INTO bench_reply_cases
             (case_name, category, is_group, unreplied_json, all_messages_json,
              required_keywords_json, required_hits, forbidden_keywords_json,
              min_replies, max_replies, rubric_name, notes)
@@ -65,7 +71,7 @@ def migrate_memory_search(db: CaseDB):
     from src.tests.test_memory_search_benchmark import BENCHMARK_CASES as _OLD_SEARCH_CASES
     conn = db._get_conn()
     for c in _OLD_SEARCH_CASES:
-        conn.execute("""INSERT OR REPLACE INTO benchmark_search_cases
+        conn.execute("""INSERT OR REPLACE INTO bench_search_cases
             (case_name, query, expected_docs_json, unexpected_docs_json,
              required_fragments_json, category, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?)""", (
@@ -86,7 +92,7 @@ def main():
     migrate_tool_decision(db)
     migrate_reply_quality(db)
     migrate_memory_search(db)
-    print(f"\nDone. Verify: sqlite3 data/cases.db 'SELECT COUNT(*) FROM benchmark_tool_cases'")
+    print(f"\nDone. Verify: sqlite3 data/cases.db 'SELECT COUNT(*) FROM bench_tool_cases'")
 
 
 if __name__ == "__main__":

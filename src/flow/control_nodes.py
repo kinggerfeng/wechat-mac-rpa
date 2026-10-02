@@ -32,7 +32,7 @@ import time
 from typing import Any
 
 from .registry import BaseNode, NodeRegistry, NodeSpec, ParamSpec
-from .schema import NodeError
+from .schema import BRANCH_PORTS, NodeError
 
 #: Hard ceiling on nesting. A flow that calls itself would otherwise recurse until
 #: Python's own limit turns it into an opaque RecursionError.
@@ -199,6 +199,67 @@ class ForeachNode(BaseNode):
         if isinstance(collection, dict):
             return list(collection.values())
         raise NodeError(f"collection 类型不支持: {type(collection).__name__}")
+
+
+# ──────────────────────────────────────────────────── fan-out / fan-in ──
+
+class ParallelNode(BaseNode):
+    """Fork into every connected branch, then join.
+
+    **The executor runs this, not the node.** A fork has to hold several
+    branches and stop at their common barrier, and a node body has nowhere to
+    put that. So :meth:`execute` is only reached if something runs the handler
+    outside the executor — the canvas preview, or a direct unit test — and it
+    says so rather than pretending to have fanned out.
+
+    Branches share one scope, which is the reason to use a join at all: branch A
+    binds ``total`` and branch B reads it afterwards.
+
+    ``mode`` is ``sequential`` by default and should stay that way for anything
+    that touches the screen. ``parallel`` really does use threads, and the
+    validator refuses the combination of threads with a screen-touching branch,
+    because two of those do not interleave — they fight over one cursor.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        raise NodeError(
+            "parallel 是调度层节点，必须由执行器运行；直接调用节点不会分叉。"
+            "（画布预览不执行分叉，只做静态校验。）"
+        )
+
+
+class JoinNode(BaseNode):
+    """The barrier every branch of a ``parallel`` runs into.
+
+    Also executed by the executor, and for the same reason: the fork waits here
+    once, after every branch has arrived, so the node must not also run once per
+    branch. Its outputs are the branch bookkeeping the fork gathered.
+
+    There is deliberately no ``any``/``n-of`` mode. Abandoning a branch that is
+    already running is not something this executor can do safely — a click has
+    already been issued by the time anyone could cancel it — so offering the
+    option would promise a cancellation that does not exist.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        branches = int(self.param("branches", 0) or 0)
+        if not branches:
+            # Reached without a fork. A run that got here still has to produce
+            # something, and reporting "no branches arrived" is the truth;
+            # raising would turn a wiring mistake into an unrelated crash.
+            return {
+                "branches": 0,
+                "failed_branches": 0,
+                "failures": [],
+                "join": self.node_id,
+                "note": "没有 parallel 分支汇入本节点，等待不会真正发生",
+            }
+        return {
+            "branches": branches,
+            "failed_branches": int(self.param("failed_branches", 0) or 0),
+            "failures": list(self.param("failures", []) or []),
+            "join": str(self.param("join", "") or self.node_id),
+        }
 
 
 # ─────────────────────────────────────────────────────── error regions ──
@@ -388,6 +449,47 @@ NodeSpec(
                           help="每轮把当前项写进这个变量；下标可读 <变量名>_index"),
             ],
             outputs=["item", "done", "loop"],
+        )
+    )
+    add(
+        NodeSpec(
+            type="parallel",
+            label="并行分支",
+            category="控制流",
+            handler=ParallelNode,
+            doc=("从 b1..b4 端口分叉到各分支，全部走完后在 join 节点汇合再继续。"
+                 "分支共用同一份作用域。默认顺序执行——分支里有点击/输入/截图时，"
+                 "并行线程会争抢同一个鼠标和屏幕，校验器会直接报错拦下。"),
+            params=[
+                ParamSpec("mode", "select", "执行方式", "sequential",
+                          choices=["sequential", "parallel"],
+                          help="parallel 用线程真正并发；只适用于不操作屏幕的分支"),
+                ParamSpec("on_error", "select", "分支失败时", "fail",
+                          choices=["fail", "continue"],
+                          help="continue 会让其他分支跑完并在 failed_branches 里记账"),
+            ],
+            # ``outputs`` is the port list here, not a data contract: the fork
+            # has no result of its own to publish, and the branch ports are the
+            # whole point of the node.
+            outputs=list(BRANCH_PORTS),
+        )
+    )
+    add(
+        NodeSpec(
+            type="join",
+            label="汇合",
+            category="控制流",
+            handler=JoinNode,
+            doc="并行分支的汇合点，由 parallel 在所有分支到达后执行一次。",
+            params=[
+                ParamSpec("label", "text", "标签", "",
+                          help="仅用于轨迹里辨认这一处汇合"),
+            ],
+            # No declared outputs, on purpose: ``NodeSpec.outputs`` doubles as
+            # the canvas port list, and a barrier that drew four ports labelled
+            # ``branches``/``failures`` would invite edges that do nothing. The
+            # bookkeeping is still reachable as ``{{join.branches}}`` — the
+            # node-scoped binding does not depend on the declared outputs.
         )
     )
     add(

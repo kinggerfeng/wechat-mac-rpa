@@ -14,6 +14,7 @@ Case Database — SQLite 存储所有 badcase 的完整信息（原始 prompt、
 
 import json
 import logging
+import re
 import sqlite3
 import threading
 from datetime import datetime, timedelta
@@ -21,6 +22,10 @@ from pathlib import Path
 from typing import Optional
 
 _logger = logging.getLogger(__name__)
+
+
+def _sorted_text(names) -> str:
+    return "、".join(sorted(names))
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DB_PATH = PROJECT_ROOT / "data" / "cases.db"
@@ -129,12 +134,23 @@ CREATE TABLE IF NOT EXISTS experiment_results (
     judge_score REAL DEFAULT 0,
     judge_dimensions_json TEXT,
     judge_reason TEXT,
+    -- Present because scripts/run_experiment.py writes them and
+    -- scripts/admin.py reads them for the side-by-side prompt diff. The
+    -- columns were read and written for months before anyone ran either
+    -- statement: `no such column: system_prompt` on the INSERT, the same on
+    -- the SELECT, and a DDL that had never had them.
+    system_prompt TEXT,
+    user_prompt TEXT,
     UNIQUE(experiment_id, tick_id, config_name)
 );
 CREATE TABLE IF NOT EXISTS bench_tool_cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT, case_name TEXT UNIQUE NOT NULL,
     user_message TEXT NOT NULL, should_call_memory INTEGER NOT NULL DEFAULT 0,
-    category TEXT NOT NULL, notes TEXT, enabled INTEGER DEFAULT 1
+    category TEXT NOT NULL, notes TEXT, enabled INTEGER DEFAULT 1,
+    -- Written by scripts/migrate_benchmarks_to_db.py, absent from the DDL
+    -- until now, so the migration died on `no such column` before it could
+    -- insert a single row.
+    evaluation_mode TEXT
 );
 
 CREATE TABLE IF NOT EXISTS bench_reply_cases (
@@ -142,13 +158,16 @@ CREATE TABLE IF NOT EXISTS bench_reply_cases (
     category TEXT NOT NULL, is_group INTEGER DEFAULT 0,
     unreplied_json TEXT NOT NULL, all_messages_json TEXT NOT NULL,
     required_keywords_json TEXT, forbidden_keywords_json TEXT,
-    notes TEXT, enabled INTEGER DEFAULT 1
+    notes TEXT, enabled INTEGER DEFAULT 1,
+    required_hits INTEGER, min_replies INTEGER, max_replies INTEGER,
+    rubric_name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS bench_search_cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT, case_name TEXT UNIQUE NOT NULL,
     query TEXT NOT NULL, expected_docs_json TEXT NOT NULL,
-    category TEXT NOT NULL, notes TEXT, enabled INTEGER DEFAULT 1
+    category TEXT NOT NULL, notes TEXT, enabled INTEGER DEFAULT 1,
+    unexpected_docs_json TEXT, required_fragments_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS bench_adversarial_cases (
@@ -191,9 +210,34 @@ CREATE TABLE IF NOT EXISTS code_audit_round (
 """
 
 
-# =============================================================================
-# Database class
-# =============================================================================
+#: The ``tick_log`` CREATE as :data:`SCHEMA_SQL` declares it, sliced out once so
+#: the migration's drift guard has the *intended* shape to compare against. The
+#: live table is the old one; comparing an old table against itself finds
+#: nothing.
+_SCHEMA_TICK_LOG_DDL: str = SCHEMA_SQL[
+    SCHEMA_SQL.index("CREATE TABLE IF NOT EXISTS tick_log (")
+    :SCHEMA_SQL.index("CREATE TABLE IF NOT EXISTS cases (")
+]
+
+#: Columns ``scripts/migrate_benchmarks_to_db.py`` writes that the original
+#: benchmark DDL never declared. Same class of defect as
+#: ``experiment_results.system_prompt``: a writer and a schema that had never
+#: met, so the first INSERT of every migration run raised and nothing landed.
+_BENCH_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("bench_tool_cases", "evaluation_mode", "TEXT"),
+    ("bench_reply_cases", "required_hits", "INTEGER"),
+    ("bench_reply_cases", "min_replies", "INTEGER"),
+    ("bench_reply_cases", "max_replies", "INTEGER"),
+    ("bench_reply_cases", "rubric_name", "TEXT"),
+    ("bench_search_cases", "unexpected_docs_json", "TEXT"),
+    ("bench_search_cases", "required_fragments_json", "TEXT"),
+)
+
+#: experiment_results columns read and written by scripts/ but never declared.
+_EXPERIMENT_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("system_prompt", "TEXT"),
+    ("user_prompt", "TEXT"),
+)
 
 class CaseDB:
     """Badcase 数据库 — 线程安全的 SQLite 封装。"""
@@ -210,57 +254,213 @@ class CaseDB:
         conn.row_factory = sqlite3.Row
         return conn
 
+    #: Columns the modern ``tick_log`` has that the original one did not, with
+    #: the literal to fill them with. The rebuild copies every column the live
+    #: table already has, so this only has to describe what is genuinely new —
+    #: and a column added to ``SCHEMA_SQL`` but forgotten here is now a column
+    #: silently dropped by the rebuild, so the two lists are checked against
+    #: each other in :meth:`_migrate_tick_log`.
+    _TICK_LOG_ADDED: tuple[tuple[str, str, str], ...] = (
+        # (column, declaration, value to use when the old table lacks it)
+        ("session_id", "TEXT NOT NULL DEFAULT ''", "''"),
+        ("tool_results_json", "TEXT DEFAULT '[]'", "'[]'"),
+        ("session_input_messages_json", "TEXT", "NULL"),
+        ("session_output_unreplied_json", "TEXT", "NULL"),
+        ("judge_raw_response", "TEXT", "NULL"),
+        ("feedback_decision", "TEXT DEFAULT ''", "''"),
+        ("feedback_issues", "TEXT DEFAULT '[]'", "'[]'"),
+        ("self_refine_applied", "INTEGER DEFAULT 0", "0"),
+        ("iterate_count", "INTEGER DEFAULT 0", "0"),
+        ("react_round_count", "INTEGER DEFAULT 0", "0"),
+        ("think_tool_called", "INTEGER DEFAULT 0", "0"),
+        ("feedback_raw_response", "TEXT DEFAULT ''", "''"),
+        ("iterate_raw_response", "TEXT DEFAULT ''", "''"),
+        ("llm_messages_json", "TEXT DEFAULT '[]'", "'[]'"),
+        ("human_labeled_at", "TEXT", "NULL"),
+    )
+
+    def _migrate_tick_log(self, conn: sqlite3.Connection) -> None:
+        """Rebuild ``tick_log`` without the old ``UNIQUE(tick_id)`` constraint.
+
+        Two things this has to get right, both of which the previous version
+        got wrong:
+
+        * **Atomic.** ``executescript`` commits implicitly, so a failure
+          half-way left ``tick_log_new`` on disk. On the next start
+          ``CREATE TABLE IF NOT EXISTS`` skipped it and the INSERT hit the
+          stale shape again — permanently stuck, with a junk table nobody
+          cleaned. Here the whole rebuild is one explicit transaction, and a
+          stray table from an earlier failed attempt is dropped first.
+        * **Self-checking.** If ``SCHEMA_SQL`` grows a column that is not in
+          :attr:`_TICK_LOG_ADDED`, the rebuild would drop real data. That is a
+          loud error rather than a quiet loss.
+        """
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='tick_log'"
+        ).fetchone()
+        if row is None:  # pragma: no cover - SCHEMA_SQL just created it
+            return
+        ddl = row[0] or ""
+        has_session = "session_id" in ddl
+        has_unique_tick = "UNIQUE" in ddl and "tick_id" in ddl
+        if has_session and not has_unique_tick:
+            return
+
+        live = {r[1] for r in conn.execute("PRAGMA table_info(tick_log)").fetchall()}
+        declared = self._columns_in_create(ddl)
+        additions = {c: (decl, default) for c, decl, default in self._TICK_LOG_ADDED
+                     if c not in live}
+        # Drift guard. ``SCHEMA_SQL`` is the intended shape; a column added
+        # there but not to ``_TICK_LOG_ADDED`` is one this rebuild would drop,
+        # and dropping a column takes its data with it. Comparing against the
+        # live table cannot catch that — the live table is the old one.
+        intended = set(self._columns_in_create(_SCHEMA_TICK_LOG_DDL))
+        unaccounted = intended - live - set(additions)
+        if unaccounted:
+            raise RuntimeError(
+                f"tick_log 的目标结构有 {_sorted_text(unaccounted)} 这些列，"
+                f"既不在旧表里、也不在 _TICK_LOG_ADDED 里；重建会把它们的数据丢掉。"
+                f"请先补进 _TICK_LOG_ADDED。"
+            )
+
+        # The old table's own columns first, in their declared order, then the
+        # additions. Deriving only from ``declared`` would drop every addition,
+        # which is the bug this rewrite exists to remove.
+        columns = [c for c in declared if c in live or c in additions]
+        columns += [c for c in additions if c not in columns]
+        # Anything the old table has that the current schema dropped is kept:
+        # losing a column is a different decision from adding one, and this
+        # migration is not the place to make it silently.
+        columns = list(dict.fromkeys(columns + [c for c in live if c not in columns]))
+
+        decls = []
+        values = []
+        for name in columns:
+            if name in additions:
+                decl, default = additions[name]
+            else:
+                decl, default = self._column_decl(ddl, name), name
+                # ``tick_id INTEGER NOT NULL UNIQUE`` carried over verbatim is
+                # the constraint this whole rebuild exists to remove: one tick
+                # per session, so the same tick_id recurs.
+                if name == "tick_id" and "UNIQUE" in decl.upper():
+                    decl = re.sub(r"\s*UNIQUE", "", decl, flags=re.IGNORECASE)
+            decls.append(f"    {name} {decl}".rstrip())
+            values.append(default)
+
+        # A leftover from an earlier failed attempt, if any.
+        conn.execute("DROP TABLE IF EXISTS tick_log_new")
+        conn.execute("CREATE TABLE tick_log_new (\n    " + ",\n    ".join(decls) + "\n)")
+        conn.execute(
+            "INSERT INTO tick_log_new (" + ", ".join(columns) + ") "
+            "SELECT " + ", ".join(values) + " FROM tick_log"
+        )
+        conn.execute("DROP TABLE tick_log")
+        conn.execute("ALTER TABLE tick_log_new RENAME TO tick_log")
+        # The rebuild is the migration; everything below is ordinary DDL.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_tick_session ON tick_log(session_id, created_at DESC)"
+        )
+        conn.commit()
+
+    @staticmethod
+    def _split_definitions(ddl: str) -> list[str]:
+        """Split a ``CREATE TABLE`` body on top-level commas.
+
+        Parenthesis-aware, and it has to be: half the columns here end in
+        ``DEFAULT (datetime('now','localtime'))``, and a plain ``split(",")``
+        cuts that in half, producing a declaration of
+        ``TEXT DEFAULT (datetime('now'`` and a syntax error at CREATE time.
+        """
+        body = ddl[ddl.index("(") + 1: ddl.rindex(")")]
+        parts: list[str] = []
+        depth = 0
+        quote: str | None = None
+        current = ""
+        for char in body:
+            if quote:
+                current += char
+                if char == quote:
+                    quote = None
+                continue
+            if char in "'\"":
+                quote = char
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            if char == "," and depth == 0:
+                parts.append(current)
+                current = ""
+            else:
+                current += char
+        parts.append(current)
+        return [" ".join(part.split()) for part in parts if part.strip()]
+
+    @classmethod
+    def _columns_in_create(cls, ddl: str) -> list[str]:
+        """Column names from a ``CREATE TABLE`` body, in order.
+
+        Read from the DDL rather than from ``PRAGMA table_info`` because the
+        point is to reproduce the *declared* shape, constraints included.
+        """
+        out: list[str] = []
+        for part in cls._split_definitions(ddl):
+            head = part.split()[0].strip('"').strip("`")
+            # Table-level constraints are not columns.
+            if head.upper() in ("UNIQUE", "PRIMARY", "FOREIGN", "CHECK", "CONSTRAINT"):
+                continue
+            out.append(head)
+        return out
+
+    @classmethod
+    def _column_decl(cls, ddl: str, name: str) -> str:
+        for part in cls._split_definitions(ddl):
+            if part.split()[0].strip('"') == name:
+                return part[len(name):].strip() or "TEXT"
+        return "TEXT"
+
     def _init_schema(self):
         with self._lock:
             conn = sqlite3.connect(str(self.db_path))
             conn.executescript(SCHEMA_SQL)
             conn.commit()
-            # 迁移：添加 session_id 列 + 移除 tick_id UNIQUE 约束
+            # 迁移：添加 session_id 列 + 移除 tick_id UNIQUE 约束。
+            #
+            # The new table is generated from the *live* old table rather than
+            # from a hand-written column list. The previous version kept a
+            # 29-column CREATE next to a 35-value INSERT ... SELECT; the two
+            # drifted apart, SQLite rejected the statement, and the surrounding
+            # ``except`` logged a warning and moved on — so the migration never
+            # ran, on any database, ever, and left a stray ``tick_log_new``
+            # behind that made every later attempt fail the same way. Deriving
+            # both halves from one mapping makes that class of bug impossible:
+            # a column cannot be added to the DDL without a value to fill it.
             try:
-                cur = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='tick_log'")
-                ddl = cur.fetchone()[0]
-                needs_migration = ('session_id' not in ddl) or ('UNIQUE' in ddl and 'tick_id' in ddl)
-                if needs_migration:
-                    conn.executescript("""
-                        CREATE TABLE IF NOT EXISTS tick_log_new (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            session_id TEXT NOT NULL DEFAULT '',
-                            tick_id INTEGER NOT NULL,
-                            created_at TEXT DEFAULT (datetime('now','localtime')),
-                            skip_reason TEXT,
-                            chat_name TEXT, is_group INTEGER DEFAULT 0, screenshot_path TEXT,
-                            messages_count INTEGER, new_messages_count INTEGER DEFAULT 0,
-                            system_prompt TEXT, user_prompt TEXT, raw_response TEXT, tool_calls_json TEXT, tool_results_json TEXT DEFAULT '[]',
-                            session_input_messages_json TEXT, session_output_unreplied_json TEXT,
-                            judge_raw_response TEXT,
-                            should_reply INTEGER DEFAULT 0,
-                            replies_sent_json TEXT, send_success INTEGER DEFAULT 0, send_duration_ms INTEGER,
-                            judge_score REAL, judge_is_badcase INTEGER, judge_dimensions_json TEXT,
-                            human_is_badcase INTEGER, human_badcase_type TEXT, human_notes TEXT,
-                            tokens_estimated INTEGER DEFAULT 0, duration_ms INTEGER,
-                            human_labeled_at TEXT, judge_badcase_type TEXT, judge_reason TEXT,
-                            self_refine_applied INTEGER DEFAULT 0,
-                            feedback_decision TEXT DEFAULT '',
-                            feedback_issues TEXT DEFAULT '[]',
-                            iterate_count INTEGER DEFAULT 0,
-                            react_round_count INTEGER DEFAULT 0,
-                            think_tool_called INTEGER DEFAULT 0
-                        );
-                        INSERT INTO tick_log_new SELECT id, '', tick_id, created_at, skip_reason,
-                            chat_name, is_group, screenshot_path, messages_count, new_messages_count,
-                            system_prompt, user_prompt, raw_response, tool_calls_json,
-                            should_reply, replies_sent_json, send_success, send_duration_ms,
-                            judge_score, judge_is_badcase, judge_dimensions_json,
-                            human_is_badcase, human_badcase_type, human_notes,
-                            tokens_estimated, duration_ms, human_labeled_at, judge_badcase_type, judge_reason,
-                            0, '', '[]', 0, 0, 0
-                            FROM tick_log;
-                        DROP TABLE tick_log;
-                        ALTER TABLE tick_log_new RENAME TO tick_log;
-                    """)
-                    conn.commit()
-            except Exception as e:
-                _logger.warning("[CaseDB] schema 迁移失败: %s", e)
+                self._migrate_tick_log(conn)
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("[CaseDB] tick_log schema 迁移失败: %s", e)
+
+            # 迁移：bench_*_cases 补上迁移脚本一直在写、DDL 里却没有的列。
+            try:
+                for table, column, decl in _BENCH_ADDED_COLUMNS:
+                    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                    if column not in cols:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                conn.commit()
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("[CaseDB] bench_*_cases 迁移失败: %s", e)
+
+            # 迁移：experiment_results 补上被读写但从未建过的两列。
+            try:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(experiment_results)").fetchall()}
+                for column, decl in _EXPERIMENT_ADDED_COLUMNS:
+                    if column not in cols:
+                        conn.execute(
+                            f"ALTER TABLE experiment_results ADD COLUMN {column} {decl}")
+                conn.commit()
+            except Exception as e:  # noqa: BLE001
+                _logger.warning("[CaseDB] experiment_results 迁移失败: %s", e)
 
             # 迁移：添加 session_input_messages_json 和 session_output_unreplied_json 列
             try:

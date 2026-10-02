@@ -294,9 +294,14 @@ app.add_middleware(
 
 
 from .rpa_api import router as rpa_router  # noqa: E402
+from .cases_api import router as cases_router  # noqa: E402
 from .record_api import router as record_router  # noqa: E402
 
 app.include_router(rpa_router)
+# cases.db belongs to the cases router and nothing else: the flow engine has its
+# own rpa.db, and a query that reaches across the two from a flow node is the
+# coupling this split exists to prevent.
+app.include_router(cases_router)
 app.include_router(record_router)
 
 
@@ -312,34 +317,12 @@ def get_status() -> dict[str, Any]:
 
 @app.get("/api/dashboard/summary")
 def dashboard_summary() -> dict[str, int | float | str]:
-    today = date.today().isoformat()
-    if not CASE_DB_PATH.exists():
-        return {"date": today, "ticks": 0, "replies": 0, "avg_score": 0, "skipped": 0, "skip_rate": 0}
+    # The SQL lives in the cases router, which is the only thing that opens
+    # cases.db. This endpoint predates that split and the overview page still
+    # calls it, so it stays — as a delegation, not a second copy of the query.
+    from .cases_api import today_summary
 
-    conn = sqlite3.connect(f"{CASE_DB_PATH.as_uri()}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute(
-            """SELECT COUNT(*) AS total,
-                      SUM(CASE WHEN should_reply=1 THEN 1 ELSE 0 END) AS replied,
-                      COALESCE(ROUND(AVG(CASE WHEN judge_score>0 THEN judge_score END), 1), 0) AS avg_score,
-                      SUM(CASE WHEN skip_reason IS NOT NULL THEN 1 ELSE 0 END) AS skipped
-               FROM tick_log WHERE date(created_at)=?""",
-            (today,),
-        ).fetchone()
-    finally:
-        conn.close()
-
-    total = row["total"] or 0
-    skipped = row["skipped"] or 0
-    return {
-        "date": today,
-        "ticks": total,
-        "replies": row["replied"] or 0,
-        "avg_score": row["avg_score"],
-        "skipped": skipped,
-        "skip_rate": round(skipped * 100 / max(total, 1)),
-    }
+    return today_summary(CASE_DB_PATH)
 
 
 @app.post("/api/bot/start")

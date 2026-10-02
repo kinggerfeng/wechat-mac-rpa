@@ -452,9 +452,295 @@ def validate_flow(graph: dict[str, Any], known_types: Iterable[str] | None = Non
             )
 
     issues.extend(_validate_paths(parsed, graph.get("default_path")))
+    issues.extend(_validate_branching(parsed, valid_edges))
     _validate_variable_ambiguity(graph, list(parsed.values()), issues)
 
     return issues
+
+
+#: Node types that move the mouse, type, or read the screen. Two of these running
+#: at once do not interleave politely — they fight over one cursor and one
+#: screen, and the loser reports a click that landed on whatever the winner
+#: drew. So a threaded branch containing one is refused at validation time
+#: rather than discovered as a mystery mis-click.
+UI_BOUND_TYPES = frozenset({
+    "click", "double_click", "right_click", "hover", "drag", "scroll",
+    "type_keys", "send_keys", "vlm_act", "capture", "perceive", "find_image",
+    "find_color", "assert_pixel", "wait_for", "activate", "activate_app",
+    "window_rect", "set_window_rect", "minimize_window", "maximize_window",
+    "close_window", "pick", "vlm_locate",
+})
+
+#: The branch ports a ``parallel`` node exposes. Fixed count on purpose: the
+#: canvas renders ports from the node spec, so a variable number would need a
+#: second mechanism to draw. Unused ports simply have no edge.
+BRANCH_PORTS = ("b1", "b2", "b3", "b4")
+
+
+def _validate_branching(nodes: dict[str, Node], edges: dict[str, Edge]) -> list[ValidationIssue]:
+    """Check fan-out and fan-in.
+
+    Two rules earn their keep here, and both are about a branch that *looks*
+    connected but cannot be:
+
+    1. **Two unconditional edges out of the same port.** The executor is a
+       cursor that takes the first matching edge; the second is dead. That used
+       to validate clean and report success, which is how someone wiring
+       parallel branches by hand ends up with one of the two silently missing.
+    2. **Branches that do not meet at one join.** A barrier needs a single
+       point to wait at. Branches converging on different joins, or on none,
+       cannot be joined, and saying so at save time beats a run that hangs or
+       half-fires.
+    """
+    issues: list[ValidationIssue] = []
+
+    by_source: dict[tuple[str, str], list[Edge]] = {}
+    for edge in sorted(edges.values(), key=lambda e: e.id):
+        if edge.condition:
+            continue
+        by_source.setdefault((edge.source, edge.source_port), []).append(edge)
+    for (source, port), group in sorted(by_source.items()):
+        if len(group) < 2:
+            continue
+        targets = "、".join(e.target for e in group)
+        hint = "改用 parallel 节点的分支出边" if port == "ok" else "给其中几条加条件"
+        issues.append(ValidationIssue(
+            "error",
+            "duplicate_unconditional_edge",
+            f"节点 {source} 的 {port} 端口有多条无条件出边（{targets}），"
+            f"执行器只会走第一条，其余永不执行；{hint}",
+            node_id=source,
+            edge_id=group[1].id,
+        ))
+
+    for node in nodes.values():
+        if node.type == "parallel":
+            issues.extend(_validate_parallel_node(node, nodes, edges))
+        elif node.type == "join":
+            issues.extend(_validate_join_node(node, nodes, edges))
+    return issues
+
+
+def _parallel_entries(node: Node, edges: dict[str, Edge]) -> list[str]:
+    return [e.target for e in sorted(edges.values(), key=lambda e: e.id)
+            if e.source == node.id and e.source_port in BRANCH_PORTS]
+
+
+def _reaches_join(start: str, nodes: dict[str, Node], edges: dict[str, Edge]) -> set[str]:
+    """Joins that can end a walk entering at ``start``.
+
+    A nested ``parallel`` resolves to *its own* barrier and the walk carries on
+    from there, so the inner fork's join must not be reported as the outer
+    branch's join — otherwise every nested fan-out looks like branches that
+    converge on two different barriers. Recursion with a memo, and a visiting
+    set so a cycle terminates instead of recursing until Python gives up.
+    """
+    memo: dict[str, set[str] | None] = {}
+    visiting: set[str] = set()
+    return _barriers(start, nodes, edges, memo, visiting) or set()
+
+
+def _barriers(
+    start: str,
+    nodes: dict[str, Node],
+    edges: dict[str, Edge],
+    memo: dict[str, set[str] | None],
+    visiting: set[str],
+) -> set[str] | None:
+    if start in memo:
+        return memo[start]
+    if start in visiting:
+        # A cycle cannot terminate on a join, or it would never have exited.
+        return None
+    node = nodes.get(start)
+    if node is None:
+        return None
+    if node.type == "join":
+        memo[start] = {start}
+        return memo[start]
+    visiting.add(start)
+    try:
+        if node.type == "parallel":
+            result = _barriers_after_fork(node, nodes, edges, memo, visiting)
+        else:
+            result = None
+            for edge in edges.values():
+                if edge.source != start:
+                    continue
+                onward = _barriers(edge.target, nodes, edges, memo, visiting)
+                if onward:
+                    result = set(onward) if result is None else result | onward
+    finally:
+        visiting.discard(start)
+    memo[start] = result
+    return result
+
+
+def _barriers_after_fork(
+    node: Node,
+    nodes: dict[str, Node],
+    edges: dict[str, Edge],
+    memo: dict[str, set[str] | None],
+    visiting: set[str],
+) -> set[str] | None:
+    """Where a walk that entered a fork carries on once the fork has joined."""
+    entries = _parallel_entries(node, edges)
+    if len(entries) < 2:
+        return None
+    inner: set[str] = set()
+    for entry in entries:
+        found = _barriers(entry, nodes, edges, memo, visiting)
+        if not found:
+            return None
+        inner |= found
+    if len(inner) != 1:
+        # The fork's own branches disagree; whoever validates that reports it.
+        # Returning every candidate here would double-report the same defect.
+        return None
+    barrier = next(iter(inner))
+    onward: set[str] = set()
+    for edge in edges.values():
+        if edge.source != barrier:
+            continue
+        found = _barriers(edge.target, nodes, edges, memo, visiting)
+        if found:
+            onward |= found
+    return onward or None
+
+
+def _validate_parallel_node(node: Node, nodes: dict[str, Node], edges: dict[str, Edge]) -> list[ValidationIssue]:
+    issues: list[ValidationIssue] = []
+    entries = _parallel_entries(node, edges)
+    if len(entries) < 2:
+        issues.append(ValidationIssue(
+            "error", "parallel_needs_two",
+            f"parallel 节点 {node.id} 只连了 {len(entries)} 条分支，分支少于 2 条没有意义",
+            node_id=node.id,
+        ))
+        return issues
+
+    threaded = str(node.params.get("mode") or "sequential") == "parallel"
+    for entry in entries:
+        joins = _reaches_join(entry, nodes, edges)
+        if not joins:
+            issues.append(ValidationIssue(
+                "error", "branch_no_join",
+                f"parallel 节点 {node.id} 的分支 {entry} 走不到任何 join 节点，"
+                f"汇合点缺失，执行时会一直走到分支尽头然后丢弃结果",
+                node_id=node.id,
+            ))
+            continue
+        if len(joins) > 1:
+            issues.append(ValidationIssue(
+                "error", "branch_ambiguous_join",
+                f"parallel 节点 {node.id} 的分支 {entry} 可以到达多个 join"
+                f"（{'、'.join(sorted(joins))}），一个汇合点只能等一处",
+                node_id=node.id,
+            ))
+            continue
+        if threaded:
+            offenders = _ui_bound_in_branch(entry, nodes, edges)
+            if offenders:
+                issues.append(ValidationIssue(
+                    "error", "threaded_ui_branch",
+                    f"parallel 节点 {node.id} 设为并行执行，但分支 {entry} 里含操作屏幕的节点"
+                    f"（{'、'.join(offenders)}）。两个线程会争抢同一个鼠标和同一块屏幕，"
+                    f"后执行的那个会点到先执行的那个留下的东西上；"
+                    f"请改成顺序执行，或把这些节点移出并行分支",
+                    node_id=node.id,
+                ))
+    if entries and not issues:
+        # A set of sets is unhashable, so compare the sorted tuples.
+        signatures = {tuple(sorted(_reaches_join(e, nodes, edges))) for e in entries}
+        if len(signatures) > 1:
+            only = "；".join(
+                f"{e} → {'、'.join(sorted(_reaches_join(e, nodes, edges)))}" for e in entries
+            )
+            issues.append(ValidationIssue(
+                "error", "branches_diverge",
+                f"parallel 节点 {node.id} 的分支没有汇聚到同一个 join 节点（{only}）",
+                node_id=node.id,
+            ))
+    return issues
+
+
+def _validate_join_node(node: Node, nodes: dict[str, Node], edges: dict[str, Edge]) -> list[ValidationIssue]:
+    """A join reached without a fork is a node that does nothing.
+
+    It would pass through as an ordinary node, so the flow would run and report
+    success while the author believed they had written a barrier. That is worse
+    than refusing to save.
+    """
+    incoming = [e for e in edges.values() if e.target == node.id]
+    if not incoming:
+        return [ValidationIssue(
+            "error", "join_no_incoming",
+            f"join 节点 {node.id} 没有任何入边", node_id=node.id,
+        )]
+    for edge in incoming:
+        source = nodes.get(edge.source)
+        if source is None or source.type != "parallel":
+            continue
+        # A direct parallel -> join edge means the branch never ran: the fork
+        # went straight to the barrier.
+        if edge.source_port in BRANCH_PORTS:
+            issues = [ValidationIssue(
+                "error", "join_direct_from_parallel",
+                f"join 节点 {node.id} 直接连在 parallel 的分支出边上，"
+                f"这条分支没有任何节点可执行",
+                node_id=node.id, edge_id=edge.id,
+            )]
+            return issues
+    if not _reaches_any_parallel(node.id, nodes, edges):
+        return [ValidationIssue(
+            "error", "join_without_parallel",
+            f"join 节点 {node.id} 只能由 parallel 的分支进入；"
+            f"没有任何 parallel 分支能走到它，它会当作普通节点空转",
+            node_id=node.id,
+        )]
+    return []
+
+
+def _reaches_any_parallel(start: str, nodes: dict[str, Node], edges: dict[str, Edge]) -> bool:
+    """Whether ``start`` is downstream of a ``parallel`` node."""
+    reverse: dict[str, list[str]] = {}
+    for edge in edges.values():
+        reverse.setdefault(edge.target, []).append(edge.source)
+    seen = {start}
+    stack = [start]
+    while stack:
+        current = stack.pop()
+        for prev in reverse.get(current, ()):
+            if prev in seen:
+                continue
+            node = nodes.get(prev)
+            if node is not None and node.type == "parallel":
+                return True
+            seen.add(prev)
+            stack.append(prev)
+    return False
+
+
+def _ui_bound_in_branch(start: str, nodes: dict[str, Node], edges: dict[str, Edge]) -> list[str]:
+    """Node types in a branch that touch the screen, up to the join."""
+    outgoing: dict[str, list[str]] = {}
+    for edge in edges.values():
+        outgoing.setdefault(edge.source, []).append(edge.target)
+    found: list[str] = []
+    seen = {start}
+    stack = [start]
+    while stack:
+        current = stack.pop()
+        node = nodes.get(current)
+        if node is not None and node.type == "join":
+            continue
+        if node is not None and node.type in UI_BOUND_TYPES and node.type not in found:
+            found.append(node.type)
+        for nxt in outgoing.get(current, ()):
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return sorted(found)
 
 
 def _validate_paths(nodes: dict[str, Node], default_path: Any) -> list[ValidationIssue]:

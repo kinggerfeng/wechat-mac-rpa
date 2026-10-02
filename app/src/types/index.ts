@@ -300,6 +300,32 @@ export interface CronPreview {
   next_runs?: string[];
 }
 
+export interface SchedulerLease {
+  path: string;
+  held: boolean;
+  pid: number | null;
+  host: string | null;
+  port: number | null;
+  since: number | null;
+  since_iso: string | null;
+}
+
+export interface SchedulerStatus {
+  running: boolean;
+  /** True when another process on the same database owns the schedule loop.
+   *  The API is up and schedules are enabled, but nothing fires from here —
+   *  which looks identical to a broken schedule unless the UI says so. */
+  standby: boolean;
+  standby_reason: string;
+  lease: SchedulerLease;
+  stats: Record<string, number | string>;
+  tick_seconds: number;
+}
+
+export interface ScheduleStatus extends SchedulerStatus {
+  schedules: Schedule[];
+}
+
 export interface BotStatus {
   running: boolean;
   pid: number | null;
@@ -395,4 +421,304 @@ export interface ElementTemplate {
   path: string;
   size: number;
   modified: number;
+}
+
+/* ── cases domain ──────────────────────────────────────────────────────────
+ *
+ * Mirrors `python/backend/cases_api.py`, the router that owns `data/cases.db`.
+ * Kept separate from the flow types above on purpose: the flow engine never
+ * reads cases.db, and a type that crosses that boundary is a coupling bug
+ * waiting to happen.
+ */
+
+/**
+ * Every cases response carries these.
+ *
+ * The router answers **HTTP 200 with a full, healthy-looking payload** when
+ * cases.db is missing or its schema has drifted, tagging it `degraded: true`
+ * plus the sqlite reason. An unreadable store and a genuinely empty one are
+ * the same shape otherwise, and a code-audit list in that state renders as a
+ * perfect worklist with every issue reset to `pending` — the project's worst
+ * bug class, arrived at from the database side. Read these before trusting a
+ * "successful" response.
+ */
+export interface DegradedEnvelope {
+  degraded?: boolean;
+  degraded_reason?: string;
+}
+
+export interface CasesSummary extends DegradedEnvelope {
+  date: string;
+  ticks: number;
+  replies: number;
+  avg_score: number;
+  skipped: number;
+  skip_rate: number;
+}
+
+/** One row of the tick log. The list endpoint returns the subset in TICK_LIST_COLUMNS. */
+export interface TickRow {
+  id: number;
+  session_id: string | null;
+  tick_id: number | null;
+  chat_name: string | null;
+  messages_count: number | null;
+  new_messages_count: number | null;
+  should_reply: number | null;
+  send_success: number | null;
+  skip_reason: string | null;
+  judge_score: number | null;
+  human_is_badcase: number | null;
+  human_badcase_type: string | null;
+  replies_sent_json: string | null;
+  raw_response: string | null;
+  duration_ms: number | null;
+  created_at: string | null;
+}
+
+export type TickFilter = "all" | "replied" | "skipped";
+
+export interface TickListResponse extends DegradedEnvelope {
+  total: number;
+  page: number;
+  size: number;
+  filter: TickFilter;
+  rows: TickRow[];
+}
+
+/** The full `SELECT *` row behind the tick detail page. */
+export interface TickDetail extends TickRow, DegradedEnvelope {
+  screenshot_path: string | null;
+  system_prompt: string | null;
+  user_prompt: string | null;
+  tool_calls_json: string | null;
+  judge_is_badcase: number | null;
+  judge_reason: string | null;
+  judge_dimensions_json: string | null;
+  human_notes: string | null;
+  human_labeled_at: string | null;
+}
+
+export interface GroundTruthRow extends DegradedEnvelope {
+  id: number;
+  session_id: string | null;
+  tick_id: number | null;
+  chat_name: string | null;
+  judge_score: number | null;
+  judge_is_badcase: number | null;
+  human_is_badcase: number | null;
+  human_badcase_type: string | null;
+  raw_response: string | null;
+  /** true when the human label contradicts the judge's verdict. */
+  disagree: boolean;
+}
+
+export interface ReviewRow extends DegradedEnvelope {
+  id: number;
+  draft_id: string;
+  chat_name: string | null;
+  status: string | null;
+  badcase_type: string | null;
+  severity: string | null;
+  confidence: number | null;
+  overall_score: number | null;
+  judge_reason: string | null;
+}
+
+export interface ScreenshotRow {
+  tick_id: number;
+  session_id: string | null;
+  chat_name: string | null;
+  screenshot_path: string | null;
+  created_at: string | null;
+  has_image: boolean;
+}
+
+export interface ScreenshotListResponse extends DegradedEnvelope {
+  total: number;
+  page: number;
+  size: number;
+  rows: ScreenshotRow[];
+}
+
+export interface ScreenshotDetail extends DegradedEnvelope {
+  tick_id: number;
+  session_id: string | null;
+  chat_name: string | null;
+  screenshot_path: string | null;
+  created_at: string | null;
+  has_image: boolean;
+  reply: string | null;
+  judge_score: number | null;
+  skip_reason: string | null;
+}
+
+export interface BenchmarkReport {
+  key: "judge" | "reply";
+  title: string;
+  /** Whole report as a self-contained HTML document, injected via v-html. */
+  html: string;
+  modified: number | null;
+}
+
+export interface BenchmarkBundle extends DegradedEnvelope {
+  reports: BenchmarkReport[];
+  refreshable: boolean;
+}
+
+/** `SELECT *` from the experiments table. */
+export interface Experiment {
+  id: number;
+  name: string | null;
+  description: string | null;
+  status: string | null;
+  control_arm: string | null;
+  experiment_arm: string | null;
+  created_at: string | null;
+  [extra: string]: unknown;
+}
+
+export interface ExperimentResult {
+  tick_id: number;
+  chat_name: string | null;
+  created_at: string | null;
+  c_reply: string | null;
+  e_reply: string | null;
+  c_reason: string | null;
+  e_reason: string | null;
+  c_score: number | null;
+  e_score: number | null;
+  c_bc: number | null;
+  e_bc: number | null;
+  c_dims: string | null;
+  e_dims: string | null;
+  /** The prompts the arms actually saw, keyed by tick id in the envelope. */
+  context?: ExperimentContext;
+}
+
+export interface ExperimentContext {
+  system_prompt: string | null;
+  user_prompt: string | null;
+  tool_calls_json: string | null;
+}
+
+export interface ExperimentDetail extends DegradedEnvelope {
+  experiment: Experiment;
+  results: ExperimentResult[];
+  totals: {
+    count: number;
+    c_avg: number | null;
+    e_avg: number | null;
+    c_badcase: number;
+    e_badcase: number;
+  };
+}
+
+export type CodeAuditStatus =
+  | "pending"
+  | "todo"
+  | "rethink"
+  | "fixed"
+  | "wontfix"
+  | "deferred"
+  | "ai_analyzing"
+  | "failed";
+
+export const CODE_AUDIT_STATUSES: readonly CodeAuditStatus[] = [
+  "pending",
+  "todo",
+  "rethink",
+  "fixed",
+  "wontfix",
+  "deferred",
+  "ai_analyzing",
+  "failed",
+] as const;
+
+export const CODE_AUDIT_STATUS_LABELS: Record<CodeAuditStatus, string> = {
+  pending: "待处理",
+  todo: "已认领",
+  rethink: "待重做",
+  fixed: "已修复",
+  wontfix: "不修",
+  deferred: "搁置",
+  ai_analyzing: "分析中",
+  failed: "分析失败",
+};
+
+export interface CodeAuditIssue {
+  key: string;
+  severity: string;
+  title: string;
+  category: string | null;
+  file: string | null;
+  line: number | null;
+  description: string | null;
+}
+
+export interface CodeAuditState {
+  status: CodeAuditStatus;
+  notes: string;
+  ai_proposal: string;
+}
+
+export interface CodeAuditRound {
+  round: number;
+  notes: string;
+  proposal: string;
+  created_at: string | null;
+}
+
+export interface CodeAuditListResponse extends DegradedEnvelope {
+  issues: CodeAuditIssue[];
+  states: Record<string, CodeAuditState>;
+}
+
+export interface CodeAuditDetailResponse extends CodeAuditState, DegradedEnvelope {
+  issue: CodeAuditIssue;
+  rounds: CodeAuditRound[];
+}
+
+export type WikiAction = "delete" | "fix" | "mark" | "skip";
+
+export const WIKI_ACTIONS: readonly WikiAction[] = ["delete", "fix", "mark", "skip"] as const;
+
+export const WIKI_ACTION_LABELS: Record<WikiAction, string> = {
+  delete: "删除该行",
+  fix: "改为新值",
+  mark: "标记确认",
+  skip: "跳过",
+};
+
+export interface WikiReviewItem {
+  id: string;
+  wiki: string;
+  is_group: boolean;
+  fact: string | null;
+  line: string | null;
+  wiki_excerpt: string | null;
+  [extra: string]: unknown;
+}
+
+export interface WikiDecision {
+  id: string;
+  wiki: string;
+  is_group: boolean;
+  line: string;
+  action: WikiAction;
+  new_value: string;
+  decided_at: string;
+}
+
+export interface WikiReviewListResponse extends DegradedEnvelope {
+  items: WikiReviewItem[];
+  decisions: Record<string, WikiDecision>;
+  pending: number;
+}
+
+export interface WikiReviewDetailResponse extends DegradedEnvelope {
+  item: WikiReviewItem;
+  decision: WikiDecision | null;
+  /** The offending line plus ±2 lines, line-numbered, for locating it. */
+  context: string;
 }

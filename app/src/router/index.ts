@@ -60,6 +60,88 @@ const router = createRouter({
       component: () => import("../pages/PermissionPage.vue"),
       meta: { title: "权限与设置", icon: "Lock" },
     },
+
+    // ── cases domain ──
+    // Grouped after the engine pages: these read `data/cases.db` and are about
+    // the bot's past behaviour, not about driving the machine.
+    {
+      path: "/ticks",
+      name: "ticks",
+      component: () => import("../pages/TickListPage.vue"),
+      meta: { title: "Tick 记录", icon: "List", group: "cases" },
+    },
+    {
+      path: "/ticks/:id",
+      name: "tick-detail",
+      component: () => import("../pages/TickDetailPage.vue"),
+      meta: { title: "Tick 详情", hidden: true, group: "cases", parent: "ticks" },
+    },
+    {
+      path: "/ground-truth",
+      name: "ground-truth",
+      component: () => import("../pages/GroundTruthPage.vue"),
+      meta: { title: "真值对比", icon: "ScaleToOriginal", group: "cases" },
+    },
+    {
+      path: "/reviews",
+      name: "reviews",
+      component: () => import("../pages/ReviewListPage.vue"),
+      meta: { title: "案例库", icon: "Collection", group: "cases" },
+    },
+    {
+      path: "/screenshots",
+      name: "screenshots",
+      component: () => import("../pages/ScreenshotListPage.vue"),
+      meta: { title: "截图", icon: "Picture", group: "cases" },
+    },
+    {
+      path: "/screenshots/:tickId",
+      name: "screenshot-detail",
+      component: () => import("../pages/ScreenshotDetailPage.vue"),
+      meta: { title: "截图详情", hidden: true, group: "cases", parent: "screenshots" },
+    },
+    {
+      path: "/benchmarks",
+      name: "benchmarks",
+      component: () => import("../pages/BenchmarkPage.vue"),
+      meta: { title: "Benchmark", icon: "TrendCharts", group: "cases" },
+    },
+    {
+      path: "/experiments",
+      name: "experiments",
+      component: () => import("../pages/ExperimentListPage.vue"),
+      meta: { title: "实验 A/B", icon: "Switch", group: "cases" },
+    },
+    {
+      path: "/experiments/:id",
+      name: "experiment-detail",
+      component: () => import("../pages/ExperimentDetailPage.vue"),
+      meta: { title: "实验详情", hidden: true, group: "cases", parent: "experiments" },
+    },
+    {
+      path: "/code-audit",
+      name: "code-audit",
+      component: () => import("../pages/CodeAuditPage.vue"),
+      meta: { title: "代码审计", icon: "DocumentChecked", group: "cases" },
+    },
+    {
+      path: "/code-audit/:key",
+      name: "code-audit-detail",
+      component: () => import("../pages/CodeAuditDetailPage.vue"),
+      meta: { title: "审计详情", hidden: true, group: "cases", parent: "code-audit" },
+    },
+    {
+      path: "/wiki-review",
+      name: "wiki-review",
+      component: () => import("../pages/WikiReviewPage.vue"),
+      meta: { title: "Wiki 审核", icon: "Notebook", group: "cases" },
+    },
+    {
+      path: "/wiki-review/:id",
+      name: "wiki-review-detail",
+      component: () => import("../pages/WikiReviewDetailPage.vue"),
+      meta: { title: "Wiki 条目", hidden: true, group: "cases", parent: "wiki-review" },
+    },
   ],
 });
 

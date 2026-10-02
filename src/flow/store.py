@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS llm_providers (
 CREATE INDEX IF NOT EXISTS ix_llm_providers_default ON llm_providers(is_default);
 """
 
+#: Columns added after the tables above were first shipped. ``rpa.db`` lives in
+#: the repo and is not recreated between installs, so ``CREATE TABLE IF NOT
+#: EXISTS`` silently leaves an older database without them.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    # The minute a schedule last claimed, as ``YYYY-MM-DD HH:MM``. Distinct from
+    # ``last_run_at``, which records when a run *finished*: a run started at
+    # 10:00:50 ends at 10:01:30, and reusing last_run_at for the de-dupe stamp
+    # would let that finishing time swallow the whole 10:01 tick.
+    ("schedules", "last_fire_minute", "TEXT"),
+)
+
 
 def new_run_id() -> str:
     return f"run_{uuid.uuid4().hex[:12]}"
@@ -159,7 +170,7 @@ class RpaStore:
             conn = sqlite3.connect(self.db_path, timeout=15)
             conn.row_factory = sqlite3.Row
             try:
-                conn.execute("PRAGMA journal_mode=WAL")
+                self._ensure_wal(conn)
                 conn.execute("PRAGMA synchronous=NORMAL")
                 yield conn
                 conn.commit()
@@ -169,9 +180,56 @@ class RpaStore:
             finally:
                 conn.close()
 
+    @staticmethod
+    def _ensure_wal(conn: sqlite3.Connection) -> None:
+        """Switch the journal to WAL, but only if it is not already.
+
+        ``PRAGMA journal_mode=WAL`` takes a brief exclusive lock and returns
+        SQLITE_BUSY immediately rather than honouring ``busy_timeout``, so
+        running it on every connection meant two processes starting against the
+        same fresh database killed each other with ``database is locked``. The
+        read below is free, and a database already in WAL never needs the write.
+        """
+        if str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal":
+            return
+        for attempt in range(5):
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                return
+            except sqlite3.OperationalError as exc:
+                # The loser of a concurrent conversion sees BUSY but finds the
+                # mode already set by the winner; anything else is real.
+                mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+                if mode == "wal":
+                    return
+                if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+                    raise
+                if attempt == 4:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+
     def _init_schema(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            # ``CREATE TABLE IF NOT EXISTS`` cannot add a column to a database
+            # that already exists, so schema growth needs its own step. Kept
+            # idempotent and inline rather than as a versioned migration chain:
+            # this file is the only writer of rpa.db, and every addition so far
+            # is a nullable column with a default.
+            for table, column, decl in _ADDED_COLUMNS:
+                cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+                if column in cols:
+                    continue
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                except sqlite3.OperationalError as exc:
+                    # Another process opened the same database at the same
+                    # moment, saw the column missing too, and added it first.
+                    # Whichever loses the race has to accept the winner's column
+                    # — the alternative is refusing to start because a
+                    # concurrent uvicorn got there a millisecond earlier.
+                    if "duplicate column" not in str(exc).lower():
+                        raise
 
     # -- flows -------------------------------------------------------------
 
@@ -500,6 +558,27 @@ class RpaStore:
                 "UPDATE schedules SET last_run_at=datetime('now','localtime'), last_status=?, last_run_id=? WHERE id=?",
                 (status, run_id, schedule_id),
             )
+
+    def claim_schedule_minute(self, schedule_id: str, minute: str) -> bool:
+        """Atomically claim ``minute`` for this schedule. True if we won.
+
+        This is the cross-process de-dupe. An in-memory set is not enough: a
+        second process on the same database has its own, and a restart inside the
+        same minute starts with an empty one. Both cases fire the same schedule
+        twice — which for a WeChat flow means the second run clicks whatever the
+        first left on screen.
+
+        The compare and the write are one statement so SQLite serialises them.
+        Reading ``last_fire_minute`` first and writing it after would leave a
+        window wide enough for two ticks to both decide they were first.
+        """
+        with self.connect() as conn:
+            cursor = conn.execute(
+                "UPDATE schedules SET last_fire_minute=?"
+                " WHERE id=? AND (last_fire_minute IS NULL OR last_fire_minute<>?)",
+                (minute, schedule_id, minute),
+            )
+            return cursor.rowcount > 0
 
     # -- llm providers ----------------------------------------------------
 

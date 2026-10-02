@@ -5,7 +5,7 @@ import { AlarmClock, Delete, EditPen, Plus, Refresh } from "@element-plus/icons-
 import { api, ApiError } from "../api/client";
 import { useEngineStore } from "../stores/engine";
 import { useFlowStore } from "../stores/flow";
-import type { CronPreview, Schedule } from "../types";
+import type { CronPreview, Schedule, ScheduleStatus } from "../types";
 
 const DASH = "—";
 const DEBOUNCE_MS = 400;
@@ -34,6 +34,9 @@ const flow = useFlowStore();
 
 const schedules = ref<Schedule[]>([]);
 const schedulerRunning = ref(false);
+const standby = ref(false);
+const standbyReason = ref("");
+const leasePid = ref<number | null>(null);
 const stats = ref<Record<string, number | string>>({});
 const loading = ref(false);
 const loadError = ref("");
@@ -125,15 +128,21 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = "";
   try {
-    const result = await api.schedules();
-    schedules.value = result.schedules;
-    schedulerRunning.value = result.running;
-    stats.value = result.stats;
+    apply(await api.schedules());
   } catch (error) {
     loadError.value = reason(error);
   } finally {
     loading.value = false;
   }
+}
+
+function apply(result: ScheduleStatus): void {
+  schedules.value = result.schedules;
+  schedulerRunning.value = result.running;
+  standby.value = result.standby;
+  standbyReason.value = result.standby_reason;
+  leasePid.value = result.lease?.pid ?? null;
+  stats.value = result.stats;
 }
 
 async function runPreview(cron: string): Promise<void> {
@@ -304,11 +313,22 @@ onUnmounted(() => {
       title="计划只在空闲时触发：若已有一次运行在执行，本次触发直接跳过，不会排队补跑。上面「因忙跳过」计数就是在记这件事。"
     />
 
+    <el-alert
+      v-if="standby"
+      class="notice"
+      type="warning"
+      show-icon
+      :closable="false"
+      :title="`本进程不调度：${standbyReason || '另一个进程持有调度锁'}`"
+      description="同一个数据库同时只允许一个进程轮询计划，这是刻意的：多个进程各自调度会让同一条 cron 触发多次，并重复截图。计划仍会按 cron 触发，只是由那个进程执行。"
+    />
+
     <section class="card band">
       <div class="band-head">
         <p class="eyebrow">SCHEDULER · 调度器</p>
-        <span class="state" :class="{ live: schedulerRunning }">
-          <span class="dot" />{{ schedulerRunning ? "轮询中" : "未运行" }}
+        <span class="state" :class="{ live: schedulerRunning, hold: standby }">
+          <span class="dot" />
+          {{ schedulerRunning ? "轮询中" : standby ? `由 PID ${leasePid ?? "?"} 调度` : "未运行" }}
         </span>
       </div>
       <dl class="band-grid">
@@ -323,6 +343,10 @@ onUnmounted(() => {
         <div class="band-cell">
           <dt>因忙跳过</dt>
           <dd class="mono warn">{{ statNumber("skipped_busy") }}</dd>
+        </div>
+        <div class="band-cell">
+          <dt>因已被占用跳过</dt>
+          <dd class="mono warn">{{ statNumber("skipped_claimed") }}</dd>
         </div>
         <div class="band-cell">
           <dt>失败</dt>
@@ -547,10 +571,21 @@ onUnmounted(() => {
   background: var(--green);
 }
 
+/* Standby is neither green nor red: this process is healthy, it just is not
+   the one driving. Orange says "look over there"; red would send the operator
+   hunting a fault that is not in this process. */
+.state.hold {
+  color: var(--orange);
+}
+
+.state.hold .dot {
+  background: var(--orange);
+}
+
 .band-grid {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 14px;
 }
 

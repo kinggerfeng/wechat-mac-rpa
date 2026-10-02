@@ -438,7 +438,7 @@ def list_schedules(enabled_only: bool = False) -> dict[str, Any]:
             row["cron_preview"] = scheduler.describe(row["cron"]).get("next_runs", [])
         except Exception:  # noqa: BLE001
             row["cron_preview"] = []
-    return {"schedules": rows, "running": scheduler.running, "stats": scheduler.stats.to_dict()}
+    return {"schedules": rows, **scheduler.status()}
 
 
 @router.post("/schedules")
@@ -570,8 +570,23 @@ def preview_cron(payload: dict[str, Any]) -> dict[str, Any]:
 @router.post("/scheduler/tick")
 def scheduler_tick() -> dict[str, Any]:
     """Force one evaluation pass. Used by the schedule editor to see what a cron
-    would do right now instead of waiting for the next real tick."""
+    would do right now instead of waiting for the next real tick.
+
+    Deliberately allowed on a standby process: an operator pressing "run once"
+    means it. The minute claim is still taken, so the process holding the lease
+    will not fire the same schedule a moment later.
+    """
     return {"fired": get_scheduler().tick()}
+
+
+@router.get("/scheduler/status")
+def scheduler_status() -> dict[str, Any]:
+    """Who is actually running the schedule loop.
+
+    A process that lost the lease is up, serving the API, and firing nothing.
+    Without this the only symptom is schedules that silently stopped running.
+    """
+    return get_scheduler().status()
 
 
 # ─────────────────────────────────────────────────────────────── webhook ──

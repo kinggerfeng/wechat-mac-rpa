@@ -6,8 +6,10 @@
 // panel has to tell you *what it costs*. A designer switching a node to `auto`
 // should see, in the same glance, that a missing element will now call a model.
 
-import { computed } from "vue";
-import type { FlowEdge, FlowNode, LocatePath, NodeSpec, ValidationIssue } from "../../types";
+import { computed, toRef } from "vue";
+import VariablePicker from "./VariablePicker.vue";
+import { useVariableCatalog } from "../../composables/useVariableCatalog";
+import type { FlowEdge, FlowGraph, FlowNode, LocatePath, NodeSpec, ValidationIssue } from "../../types";
 import { LOCATE_PATHS, PATH_HINTS, PATH_LABELS } from "../../types";
 
 const props = defineProps<{
@@ -17,6 +19,8 @@ const props = defineProps<{
   issues: ValidationIssue[];
   incoming: FlowEdge[];
   targets: string[];
+  graph: FlowGraph;
+  specFor: (type: string) => NodeSpec | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +42,17 @@ function setParam(name: string, value: unknown) {
 const visionCost = computed(
   () => props.effective === "auto" || props.effective === "vision",
 );
+
+// Which values are actually in scope for the node being edited. Computed from
+// the graph, not from the last run, because the graph is what the author is
+// changing and a stale trace would offer names this edit just removed.
+const catalog = useVariableCatalog(
+  toRef(props, "graph"),
+  toRef(props, "node"),
+  (type) => props.specFor(type),
+);
+
+const VARIABLE_HINT = "可直接输入，或点右侧按钮从上游变量里挑";
 </script>
 
 <template>
@@ -120,10 +135,18 @@ const visionCost = computed(
           </label>
 
           <el-input
-            v-if="param.kind === 'text' || param.kind === 'variable'"
+            v-if="param.kind === 'text'"
             :model-value="String(paramValue(param.name) ?? '')"
             size="small"
             :placeholder="param.help"
+            @update:model-value="setParam(param.name, $event)"
+          />
+          <VariablePicker
+            v-else-if="param.kind === 'variable'"
+            :model-value="String(paramValue(param.name) ?? '')"
+            :placeholder="param.help || VARIABLE_HINT"
+            :refs="catalog.refs.value"
+            :ambiguous="catalog.ambiguous.value"
             @update:model-value="setParam(param.name, $event)"
           />
           <el-input

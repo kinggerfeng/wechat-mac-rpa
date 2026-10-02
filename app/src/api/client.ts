@@ -6,15 +6,24 @@
 // before the API is.
 
 import type {
+  BenchmarkBundle,
   BotStatus,
+  CasesSummary,
+  CodeAuditDetailResponse,
+  CodeAuditListResponse,
+  CodeAuditStatus,
   CronPreview,
   DashboardSummary,
   Element,
   ElementTemplate,
+  Experiment,
+  ExperimentDetail,
   Flow,
   FlowGraph,
   FlowSummary,
+  GroundTruthRow,
   Located,
+  LLMProvider,
   NodeCatalogue,
   PermissionReport,
   PickResult,
@@ -23,13 +32,23 @@ import type {
   RecordedAction,
   RecordStatus,
   RecordStopResult,
+  ReviewRow,
   Run,
-  LLMProvider,
   Schedule,
+  SchedulerStatus,
+  ScheduleStatus,
+  ScreenshotDetail,
+  ScreenshotListResponse,
   Span,
   Target,
+  TickDetail,
+  TickFilter,
+  TickListResponse,
   ValidateResponse,
   WebhookInfo,
+  WikiAction,
+  WikiReviewDetailResponse,
+  WikiReviewListResponse,
 } from "../types";
 
 /**
@@ -146,7 +165,8 @@ export const api = {
   resetVisionClient: () => post<{ reset: boolean }>("/permissions/vision/reset"),
 
   // ── schedules ──
-  schedules: () => request<{ schedules: Schedule[]; running: boolean; stats: Record<string, number | string> }>("/schedules"),
+  schedules: () => request<ScheduleStatus>("/schedules"),
+  schedulerStatus: () => request<SchedulerStatus>("/scheduler/status"),
   saveSchedule: (payload: Partial<Schedule>) => post<Schedule>("/schedules", payload),
   deleteSchedule: (id: string) => request<{ deleted: string }>(`/schedules/${id}`, { method: "DELETE" }),
   previewCron: (cron: string) => post<CronPreview>("/schedules/cron/preview", { cron }),
@@ -189,6 +209,88 @@ export const api = {
     min_confidence?: number;
   }) => post<PickResult>("/pick", payload),
   pickTemplates: () => request<{ templates: ElementTemplate[] }>("/pick/templates"),
+
+  // ── cases domain ────────────────────────────────────────────────────────
+  //
+  // Everything below is served by the separate cases router, which is the only
+  // thing that opens `data/cases.db`. Grouped with the flow endpoints here
+  // because callers do not care which router answers.
+
+  casesSummary: () => request<CasesSummary>("/cases/summary"),
+
+  ticks: (params: { filter?: TickFilter; page?: number; size?: number } = {}) => {
+    const query = new URLSearchParams({
+      filter: params.filter ?? "all",
+      page: String(params.page ?? 1),
+      size: String(params.size ?? 50),
+    });
+    return request<TickListResponse>(`/cases/ticks?${query}`);
+  },
+  tick: (id: number) => request<TickDetail>(`/cases/ticks/${id}`),
+  saveGroundTruth: (
+    id: number,
+    payload: { is_badcase: boolean; badcase_type?: string; notes?: string },
+  ) => post<{ saved: boolean }>(`/cases/ticks/${id}/gt`, payload),
+  /**
+   * Withdraw a verdict back to unlabelled. Not the same as saving "normal":
+   * one is a decision, the other is the absence of one, and the judge-vs-human
+   * page treats them differently.
+   */
+  clearGroundTruth: (id: number) =>
+    request<{ cleared: boolean; id: number }>(`/cases/ticks/${id}/gt`, { method: "DELETE" }),
+
+  groundTruth: (limit = 200) => request<{ rows: GroundTruthRow[] }>(`/cases/gt?limit=${limit}`),
+  reviews: (limit = 50) => request<{ rows: ReviewRow[] }>(`/cases/reviews?limit=${limit}`),
+
+  screenshots: (params: { page?: number; size?: number } = {}) => {
+    const query = new URLSearchParams({
+      page: String(params.page ?? 1),
+      size: String(params.size ?? 50),
+    });
+    return request<ScreenshotListResponse>(`/cases/screenshots?${query}`);
+  },
+  screenshot: (tickId: number) => request<ScreenshotDetail>(`/cases/screenshots/${tickId}`),
+  /** Absolute URL for an <img> src — the endpoint streams bytes, not JSON. */
+  screenshotImageUrl: (filename: string) =>
+    `${API_BASE}/api/cases/screenshot-image/${encodeURIComponent(filename)}`,
+
+  benchmarks: () => request<BenchmarkBundle>("/cases/benchmarks"),
+  refreshBenchmarks: () => post<{ success: boolean; error?: string }>("/cases/benchmarks/refresh"),
+
+  experiments: () => request<{ experiments: Experiment[] }>("/cases/experiments"),
+  experiment: (id: number) => request<ExperimentDetail>(`/cases/experiments/${id}`),
+
+  /**
+   * Issue keys are opaque strings, so they are URL-encoded on the way out and
+   * decoded on the way in. Today's keys are slugs, which is exactly why the
+   * missing encoding would survive review: a key with `/` or `#` in it routes
+   * to a different endpoint, and nothing errors until it does.
+   */
+  codeAudit: () => request<CodeAuditListResponse>("/cases/code-audit"),
+  codeAuditDetail: (key: string) =>
+    request<CodeAuditDetailResponse>(`/cases/code-audit/${encodeURIComponent(key)}`),
+  /**
+   * `notes` is **destructive when omitted** — the server writes `""` over the
+   * column. It is required here for that reason: a caller sending only a status
+   * would erase the operator's review notes with no error anywhere.
+   */
+  saveCodeAudit: (key: string, payload: { status: CodeAuditStatus; notes: string }) =>
+    post<{ saved: boolean; status: CodeAuditStatus }>(`/cases/code-audit/${encodeURIComponent(key)}`, payload),
+  analyzeCodeAudit: (key: string, notes: string) =>
+    post<{ success: boolean; reply: string; error: string; round: number }>(
+      `/cases/code-audit/${encodeURIComponent(key)}/analyze`,
+      { notes },
+    ),
+  executeCodeAudit: (key: string) =>
+    post<{ success: boolean }>(`/cases/code-audit/${encodeURIComponent(key)}/execute`),
+  rejectCodeAudit: (key: string) =>
+    post<{ success: boolean }>(`/cases/code-audit/${encodeURIComponent(key)}/reject`),
+
+  wikiReview: () => request<WikiReviewListResponse>("/cases/wiki-review"),
+  wikiReviewDetail: (id: string) =>
+    request<WikiReviewDetailResponse>(`/cases/wiki-review/${encodeURIComponent(id)}`),
+  saveWikiReview: (id: string, payload: { action: WikiAction; new_value?: string }) =>
+    post<{ success: boolean; error?: string }>(`/cases/wiki-review/${encodeURIComponent(id)}`, payload),
 };
 
 /**

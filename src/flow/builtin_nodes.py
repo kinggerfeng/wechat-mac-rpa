@@ -640,6 +640,218 @@ class PointerNode(BaseNode):
         return base
 
 
+class WaitForNode(BaseNode):
+    """Poll for a condition and branch on whether it appeared in time.
+
+    The primitive every real RPA flow is built from, and the one most often
+    written wrong. Three properties matter and are enforced here:
+
+    * **It never sleeps a fixed amount and assumes.** A flow that waits 3s and
+      then clicks has no way to distinguish "the dialog appeared in 200ms" from
+      "it never appeared", and a slow machine silently gets the second.
+    * **Timeout is a branch, not a failure.** ``appeared`` is an output and
+      ``gone`` is a port; a flow that waits for a dialog that is allowed to be
+      absent must not have to catch an exception.
+    * **The wait is abortable.** The executor's abort flag is checked between
+      polls, so a user pressing stop does not have to wait out the timeout.
+
+    Conditions: ``element`` (Path A), ``text`` (OCR), ``image`` (template),
+    ``color``, or ``window``. Each resolves through the same helpers the
+    corresponding action node uses, so a flow that waits for a thing and then
+    clicks it cannot disagree about where that thing is.
+    """
+
+    _CONDITIONS = ("element", "text", "image", "color", "window")
+
+    def execute(self) -> dict[str, Any]:
+        condition = next(
+            (c for c in self._CONDITIONS if str(self.param(c, "") or "").strip()), ""
+        )
+        if not condition:
+            raise NodeError(f"wait_for 需要以下之一：{'、'.join(self._CONDITIONS)}")
+
+        state = str(self.param("state", "appear"))
+        if state not in ("appear", "vanish"):
+            raise NodeError(f"state 只能是 appear 或 vanish，收到 {state!r}")
+
+        timeout = float(self.param("timeout", 10) or 10)
+        if timeout < 0:
+            raise NodeError("timeout 不能为负")
+        interval = max(0.05, float(self.param("interval", 0.5) or 0.5))
+        # A timeout longer than the node's own would be cut off by the
+        # executor first, leaving a node failure instead of a clean
+        # ``appeared: false``.
+        deadline = time.time() + timeout
+
+        attempts = 0
+        started = time.time()
+        last_reason = ""
+        matched = False
+        while True:
+            attempts += 1
+            matched, last_reason = self._check(condition, attempts)
+            # ``matched`` answers "is the thing there", but the wait is over when
+            # the state the caller asked for holds. Treating the two as one made
+            # ``vanish`` unreachable: the loop returned the instant the thing was
+            # still present and then reported a timeout.
+            satisfied = matched if state == "appear" else not matched
+            if satisfied:
+                return self._result(matched, condition, state, attempts,
+                                    time.time() - started, last_reason)
+            if time.time() >= deadline:
+                break
+            if self.ctx.abort_requested:
+                raise NodeAborted("wait_for 被中止")
+            time.sleep(min(interval, max(0.0, deadline - time.time())))
+
+        return self._result(matched, condition, state, attempts,
+                            time.time() - started, last_reason)
+
+    def _result(
+        self, matched: bool, condition: str, state: str,
+        attempts: int, elapsed: float, reason: str,
+    ) -> dict[str, Any]:
+        # ``appear`` and ``vanish`` are opposite questions, so the reported
+        # condition is what the caller asked, not what happened to be true.
+        appeared = matched if state == "appear" else not matched
+        return {
+            "appeared": appeared,
+            "matched": matched,
+            "attempts": attempts,
+            "elapsed": round(elapsed, 2),
+            "condition": condition,
+            "state": state,
+            "reason": reason,
+            # Every path that did not satisfy the wait ran out of time — that
+            # holds for ``vanish`` too, where the failure is "it stayed".
+            "timed_out": not appeared,
+            "__branch__": "ok" if appeared else "timeout",
+        }
+
+    def _check(self, condition: str, attempt: int = 1) -> tuple[bool, str]:
+        from .elements import locate_element
+
+        if condition == "element":
+            name = str(self.param("element", "")).strip()
+            return locate_element(self.ctx, name) is not None, f"元素 {name!r}"
+
+        if condition == "text":
+            return self._check_text(attempt)
+
+        if condition == "image":
+            return self._check_image(attempt)
+
+        if condition == "color":
+            return self._check_color(attempt)
+
+        return self._check_window()
+
+    def _acquire(self, attempt: int) -> tuple[str | None, str]:
+        """Get the image, deciding whether a failure is fatal or just "not yet".
+
+        The first poll has no excuse: if the screen cannot be read even once,
+        the wait has nothing to poll and reporting a plain timeout would blame
+        the timeout for a setup problem. Later polls are allowed to fail
+        quietly, because an app that is still launching looks exactly like that
+        for the first few hundred milliseconds.
+        """
+        try:
+            return self._haystack(), ""
+        except NodeError as exc:
+            if attempt <= 1:
+                raise
+            return None, str(exc)
+
+    def _check_text(self, attempt: int = 1) -> tuple[bool, str]:
+        """OCR the live window and look for the needle.
+
+        This deliberately does not read ``perceive`` output from the scope.
+        A wait is by definition about the screen *now* — a messages blob a
+        previous node bound can be a tick old, and a wait satisfied by stale
+        scope data is a wait that never waited.
+        """
+        needle = str(self.param("text", "")).strip()
+        if not needle:
+            return False, "text 为空"
+        image, why = self._acquire(attempt)
+        if image is None:
+            return False, why
+        try:
+            elements = self.ctx.service("ocr").recognize(image)
+        except Exception as exc:  # noqa: BLE001 - a failed read is a failed poll
+            return False, f"OCR 失败({image}): {exc}"
+        found = " ".join(str(getattr(el, "text", "") or "") for el in elements or [])
+        return needle in found, f"文本 {needle!r}（{os.path.basename(image)} 命中={needle in found}）"
+
+    def _haystack(self) -> str:
+        """The image a pixel-level condition should look at, re-taken per poll.
+
+        Order: an explicit ``haystack`` (lets a flow wait against a fixed
+        fixture, and makes the node testable), then the most recent
+        ``capture``/``perceive`` output, then a fresh capture. Falling back to
+        a fresh one is what makes ``wait_for`` usable as the first node of a
+        flow instead of forcing a screenshot nobody asked for.
+        """
+        path = str(self.param("haystack", "") or "").strip()
+        if path:
+            return path
+        for name in ("screenshot_path", "image_path"):
+            value = self.ctx.scope.get(name)
+            if value and str(value).endswith((".png", ".jpg", ".jpeg")):
+                return str(value)
+        from src.capture.window_capture import WeChatNotReadyError
+
+        try:
+            return str(self.ctx.service("capture").capture().image_path)
+        except WeChatNotReadyError as exc:
+            raise NodeError(f"wait_for 需要截图但微信未就绪: {exc}") from exc
+        except NodeError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise NodeError(f"wait_for 截图失败: {exc}") from exc
+
+    def _check_image(self, attempt: int = 1) -> tuple[bool, str]:
+        from .vision_match import find_template
+
+        needle = str(self.param("image", "")).strip()
+        image, why = self._acquire(attempt)
+        if image is None:
+            return False, why
+        try:
+            result = find_template(
+                image, needle,
+                threshold=float(self.param("threshold", 0.85) or 0.85),
+            )
+        except (FileNotFoundError, ValueError) as e:
+            return False, str(e)
+        return result.found, result.reason or f"模板 {needle!r}"
+
+    def _check_color(self, attempt: int = 1) -> tuple[bool, str]:
+        from .vision_match import find_color
+
+        raw = str(self.param("color", "")).strip()
+        parts = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
+        if len(parts) != 3:
+            return False, f"color 需要三个分量，收到 {raw!r}"
+        image, why = self._acquire(attempt)
+        if image is None:
+            return False, why
+        try:
+            rgb = tuple(int(p) for p in parts)
+            result = find_color(
+                image, rgb,  # type: ignore[arg-type]
+                threshold=int(self.param("tolerance", 30) or 30),
+            )
+        except (FileNotFoundError, ValueError) as e:
+            return False, str(e)
+        return result.found, result.reason or f"颜色 {rgb}"
+
+    def _check_window(self) -> tuple[bool, str]:
+        app = str(self.param("window", "")).strip()
+        ok, _, err = self.ctx.service("automation").get_window_rect(app)
+        return ok, err or f"窗口 {app!r}"
+
+
 class TypeKeysNode(BaseNode):
     """Send keystrokes through cliclick, or paste ``text`` via the clipboard."""
 
@@ -1146,6 +1358,14 @@ class HttpRequestNode(BaseNode):
         return {"status": status, "ok": 200 <= status < 300, "body": parsed}
 
 
+def relative_label(root: Path, path: str) -> str:
+    """Absolute path -> project-relative, for anything a trace will show."""
+    try:
+        return str(Path(path).relative_to(Path(root).resolve()))
+    except (ValueError, TypeError):
+        return str(path)
+
+
 class FileNode(BaseNode):
     """Read or write a text file under the project root.
 
@@ -1169,6 +1389,421 @@ class FileNode(BaseNode):
         if not target.is_file():
             return {"read": False, "path": str(raw_path), "reason": "file not found", "content": ""}
         return {"read": True, "path": str(target.relative_to(PROJECT_ROOT)), "content": target.read_text(encoding="utf-8", errors="replace")[:20000]}
+
+
+class _TableNode(BaseNode):
+    """Shared parsing for the table nodes: JSON/CSV in, a :class:`Table` out.
+
+    Parsing is the only thing these share. The operations live in
+    :mod:`src.flow.table` so the same code backs the nodes, the tests and
+    anything else that needs a table.
+    """
+
+    def _table(self, param: str = "table") -> "Table":
+        from .table import Table, TableError
+
+        raw = self.resolve(param, None)
+        if isinstance(raw, Table):  # pragma: no cover - defensive
+            return raw
+        if isinstance(raw, list):
+            return Table.from_rows([r for r in raw if isinstance(r, dict)])
+        if isinstance(raw, dict):
+            return Table.from_rows([raw])
+        text = str(raw or "").strip()
+        if not text:
+            raise NodeError(f"{self.spec.label} 需要表格数据")
+        fmt = str(self.param("format", "auto") or "auto").lower()
+        if fmt == "auto":
+            fmt = "json" if text[:1] in "[{" else "csv"
+        try:
+            if fmt == "json":
+                return Table.from_json(text)
+            if fmt == "csv":
+                return Table.from_csv(text, str(self.param("delimiter", ",") or ","))
+        except TableError as exc:
+            raise NodeError(str(exc)) from exc
+        except (ValueError, KeyError) as exc:
+            raise NodeError(f"解析 {fmt} 失败: {exc}") from exc
+        raise NodeError(f"不支持的 format: {fmt!r}")
+
+    def _out(self, table: "Table", **extra: Any) -> dict[str, Any]:
+        """Every table node publishes rows *and* a serialisation.
+
+        Rows are what a loop iterates; the CSV is what a `write_file` node
+        writes. Returning only one of them forces every flow to re-serialise,
+        and a hand-rolled serialiser is where quoting bugs live.
+        """
+        return {
+            "rows": table.to_rows(),
+            "count": len(table.rows),
+            "columns": list(table.columns),
+            "csv": table.to_csv(str(self.param("delimiter", ",") or ",")),
+            "json": table.to_json(),
+            **table.describe(),
+            **extra,
+        }
+
+    def _conditions(self, param: str = "conditions") -> list[dict[str, Any]]:
+        from .table import TableError
+
+        raw = self.resolve(param, None)
+        if raw in (None, ""):
+            return []
+        if isinstance(raw, list):
+            return [dict(c) for c in raw if isinstance(c, dict)]
+        text = str(raw).strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except ValueError as exc:
+            raise NodeError(f"conditions 需要 JSON 数组: {exc}") from exc
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        try:
+            return [dict(c) for c in parsed]
+        except (TypeError, ValueError) as exc:
+            raise TableError(f"conditions 每项要是对象: {exc}") from exc
+
+    def _keys(self, param: str = "keys") -> list[dict[str, Any]]:
+        """Multi-key specs for sort/group, read from a list or a JSON array."""
+        raw = self.resolve(param, None)
+        if raw in (None, ""):
+            return []
+        if isinstance(raw, list):
+            return [k if isinstance(k, dict) else {"column": str(k)} for k in raw]
+        text = str(raw).strip()
+        if not text:
+            return []
+        if not text.startswith("["):
+            return [{"column": part.strip()} for part in text.split(",") if part.strip()]
+        try:
+            parsed = json.loads(text)
+        except ValueError as exc:
+            raise NodeError(f"{param} 不是合法 JSON: {exc}") from exc
+        return [k if isinstance(k, dict) else {"column": str(k)} for k in parsed]
+
+
+class TableFilterNode(_TableNode):
+    """Keep the rows matching one or more conditions.
+
+    No match is an empty table. It is not an error, and above all it is never
+    the whole input — a filter that quietly returns everything is how a flow
+    sends a reply to every contact on the list.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        from .table import TableError, filter_and, filter_or
+
+        table = self._table()
+        conditions = self._conditions()
+        if not conditions:
+            raise NodeError("table_filter 需要至少一个条件")
+        logic = str(self.param("logic", "and") or "and").lower()
+        try:
+            result = filter_or(table, conditions) if logic == "or" \
+                else filter_and(table, conditions)
+        except TableError as exc:
+            raise NodeError(str(exc)) from exc
+        return self._out(result, matched=len(result.rows), of=len(table.rows), logic=logic)
+
+
+class TableSortNode(_TableNode):
+    """Sort by one or more keys, numbers before strings."""
+
+    def execute(self) -> dict[str, Any]:
+        from .table import TableError, sort_rows
+
+        table = self._table()
+        keys = self._keys("keys")
+        single = str(self.param("column", "") or "").strip()
+        if single:
+            keys.insert(0, {"column": single, "order": self.param("order", "asc")})
+        if not keys:
+            raise NodeError("table_sort 需要 column 或 keys")
+        try:
+            return self._out(sort_rows(table, keys))
+        except TableError as exc:
+            raise NodeError(str(exc)) from exc
+
+
+class TableJoinNode(_TableNode):
+    """Join two tables on a key.
+
+    An ``inner`` join that matched nothing is an error, not an empty table: a
+    mistyped key is indistinguishable from "no data" otherwise, and the flow
+    carries on with nothing until something unrelated fails later.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        from .table import TableError, join_tables
+
+        left = self._table("left")
+        right = self._table("right")
+        try:
+            joined = join_tables(
+                left, right,
+                str(self.param("left_key", "") or ""),
+                str(self.param("right_key", "") or ""),
+                str(self.param("how", "inner") or "inner"),
+                str(self.param("suffix", "_r") or "_r"),
+            )
+        except TableError as exc:
+            raise NodeError(str(exc)) from exc
+        return self._out(joined, left_count=len(left.rows), right_count=len(right.rows))
+
+
+class TableGroupNode(_TableNode):
+    """Group rows and aggregate."""
+
+    def execute(self) -> dict[str, Any]:
+        from .table import TableError, group_rows
+
+        table = self._table()
+        by = str(self.param("by", "") or "").strip()
+        columns = [part.strip() for part in by.split(",") if part.strip()]
+        if not columns:
+            raise NodeError("table_group 需要 by")
+        aggs = self._conditions("aggs")
+        if not aggs:
+            raise NodeError("table_group 需要至少一个聚合")
+        try:
+            return self._out(group_rows(table, columns, aggs))
+        except TableError as exc:
+            raise NodeError(str(exc)) from exc
+
+
+class TableSelectNode(_TableNode):
+    """Keep or drop columns, reorder them, and slice rows."""
+
+    def execute(self) -> dict[str, Any]:
+        table = self._table()
+        columns = [part.strip() for part in str(self.param("columns", "") or "").split(",")
+                   if part.strip()]
+        if columns:
+            missing = [c for c in columns if c not in table.columns]
+            if missing:
+                raise NodeError(
+                    f"列 {'、'.join(missing)} 不存在；现有列: {'、'.join(table.columns) or '（空表）'}"
+                )
+            table = Table(rows=[{c: row.get(c) for c in columns} for row in table.rows],
+                          columns=columns, types=table.types)
+        start = int(self.param("offset", 0) or 0)
+        limit = self.param("limit", None)
+        if start or limit not in (None, ""):
+            table = table.slice(start, int(limit) if limit not in (None, "") else None)
+        return self._out(table, offset=start)
+
+
+class TableInfoNode(_TableNode):
+    """Shape and column types, without touching the data.
+
+    Exists because the first question about a surprising table is "what type
+    did that column actually come out as", and answering it by exporting a CSV
+    and opening it is a poor way to find out.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        table = self._table()
+        return {
+            "row_count": len(table.rows),
+            "columns": list(table.columns),
+            "declared_types": dict(table.types),
+            "observed_types": {c: table.infer_type(c) for c in table.columns},
+            "preview": table.rows[: int(self.param("preview", 5) or 5)],
+        }
+
+
+class _FsNode(BaseNode):
+    """Shared plumbing for the filesystem nodes: resolve, refuse, shape.
+
+    Resolution and the containment check live in :mod:`src.flow.files` so they
+    cannot drift between the six nodes that need them. What stays here is
+    parameter shaping and the choice of which operation to run — no path logic.
+    """
+
+    def _path(self, param_name: str = "path") -> Path:
+        """Resolve one path parameter against the project root.
+
+        Every path parameter — including ``root`` on ``list_files`` — is
+        project-root-relative, and the containment check happens inside
+        :func:`resolve_under_root`. A separate "base directory" would mean two
+        different notions of where a relative path starts, and the second one
+        is the one somebody forgets to check.
+        """
+        from .files import PathRefused, resolve_under_root
+
+        raw = str(self.param(param_name, "") or "").strip()
+        if not raw:
+            raise NodeError(f"{self.spec.label} 需要 {param_name}")
+        try:
+            return resolve_under_root(PROJECT_ROOT, raw)
+        except PathRefused as exc:
+            raise NodeError(str(exc)) from exc
+
+    def _label(self, path: str | Path) -> str:
+        return relative_label(PROJECT_ROOT, str(path))
+
+
+class ListFilesNode(_FsNode):
+    """List what is under a directory, newest first."""
+
+    def execute(self) -> dict[str, Any]:
+        from .files import PathRefused, WalkOptions, summarise, walk
+
+        root = self._path("root")
+        try:
+            entries = walk(root, WalkOptions(
+                pattern=str(self.param("pattern", "*") or "*"),
+                recursive=bool(self.param("recursive", True)),
+                include_dirs=bool(self.param("include_dirs", False)),
+                max_results=int(self.param("max_results", 1000) or 1000),
+                follow_symlinks=bool(self.param("follow_symlinks", False)),
+            ))
+        except PathRefused as exc:
+            raise NodeError(str(exc)) from exc
+        for entry in entries:
+            entry["path"] = relative_label(PROJECT_ROOT, entry["path"])
+        return {"dir": relative_label(PROJECT_ROOT, str(root)), **summarise(entries)}
+
+
+class ReadFileNode(_FsNode):
+    """Read a text file, refusing what is not text."""
+
+    def execute(self) -> dict[str, Any]:
+        from .files import read_text
+
+        out = read_text(self._path())
+        out["path"] = relative_label(PROJECT_ROOT, out["path"])
+        return out
+
+
+class WriteFileNode(_FsNode):
+    """Write a text file, creating parent directories."""
+
+    def execute(self) -> dict[str, Any]:
+        path = self._path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        content = str(self.param("content", ""))
+        mode = str(self.param("mode", "write") or "write")
+        if mode == "append":
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+        return {
+            "written": True,
+            "path": relative_label(PROJECT_ROOT, str(path)),
+            "bytes": path.stat().st_size,
+            "mode": mode,
+        }
+
+
+class FileExistsNode(_FsNode):
+    """Whether a path exists, and what it is."""
+
+    def execute(self) -> dict[str, Any]:
+        path = self._path()
+        return {
+            "exists": path.exists(),
+            "is_dir": path.is_dir(),
+            "is_file": path.is_file(),
+            "path": relative_label(PROJECT_ROOT, str(path)),
+        }
+
+
+class MoveFileNode(_FsNode):
+    """Move or rename one file."""
+
+    def execute(self) -> dict[str, Any]:
+        from .files import PathRefused, move_one
+
+        source = self._path("source")
+        target = self._path("target")
+        if not source.exists():
+            raise NodeError(f"源不存在: {relative_label(PROJECT_ROOT, str(source))}")
+        try:
+            out = move_one(source, target, overwrite=bool(self.param("overwrite", False)))
+        except (PathRefused, OSError) as exc:
+            raise NodeError(str(exc)) from exc
+        out["from"] = relative_label(PROJECT_ROOT, out["from"])
+        out["to"] = relative_label(PROJECT_ROOT, out["to"])
+        return out
+
+
+class CopyFilesNode(_FsNode):
+    """Copy every file matching a pattern into a destination directory.
+
+    Never overwrites by default. A batch copy that silently replaces a file the
+    operator had already edited is the kind of thing that is only noticed a week
+    later, so the default is a new name and the collision is reported.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        from .files import PathRefused, collect, copy_one
+
+        source = self._path("source")
+        destination = self._path("target")
+        if not source.exists():
+            raise NodeError(f"源不存在: {relative_label(PROJECT_ROOT, str(source))}")
+        try:
+            files = collect(source, str(self.param("pattern", "*") or "*"),
+                            bool(self.param("recursive", True)))
+        except OSError as exc:
+            raise NodeError(f"遍历失败: {exc}") from exc
+        moved: list[dict[str, Any]] = []
+        failed: list[dict[str, str]] = []
+        for item in files:
+            try:
+                out = copy_one(item, destination, bool(self.param("overwrite", False)))
+            except (PathRefused, OSError) as exc:
+                failed.append({"path": str(item), "error": str(exc)})
+                continue
+            out["from"] = relative_label(PROJECT_ROOT, out["from"])
+            out["to"] = relative_label(PROJECT_ROOT, out["to"])
+            moved.append(out)
+        return {
+            "source": relative_label(PROJECT_ROOT, str(source)),
+            "target": relative_label(PROJECT_ROOT, str(destination)),
+            "count": len(moved),
+            "failed": failed,
+            "entries": moved,
+        }
+
+
+class DeletePathNode(_FsNode):
+    """Delete a file, or a directory when ``recursive`` is on.
+
+    Two refusals worth stating: a directory without ``recursive`` is rejected
+    rather than emptied, and a symlinked directory is unlinked rather than
+    passed to ``rmtree``, which would follow it and delete its target's
+    contents.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        from .files import PathRefused, delete_path
+
+        path = self._path()
+        try:
+            out = delete_path(path, bool(self.param("recursive", False)))
+        except PathRefused as exc:
+            raise NodeError(str(exc)) from exc
+        out["path"] = relative_label(PROJECT_ROOT, out["path"])
+        return out
+
+
+class MakeDirNode(_FsNode):
+    """Create a directory (and its parents)."""
+
+    def execute(self) -> dict[str, Any]:
+        path = self._path()
+        existed = path.is_dir()
+        path.mkdir(parents=True, exist_ok=True)
+        return {
+            "created": not existed,
+            "path": relative_label(PROJECT_ROOT, str(path)),
+            "is_dir": path.is_dir(),
+        }
 
 
 class LLMNode(BaseNode):
@@ -1377,6 +2012,88 @@ def _p(name: str, kind: str = "text", label: str = "", default: Any = None, **kw
     return ParamSpec(name=name, kind=kind, label=label or name, default=default, **kw)
 
 
+class CodeNode(BaseNode):
+    """Run a short Python snippet against the run scope.
+
+    All the policy — the AST allow-list, the deadline, the filesystem
+    containment — lives in :mod:`src.flow.code_node` so it can be tested without
+    an executor and cannot drift between callers. What stays here is parameter
+    shaping and deciding what the snippet gets to see.
+
+    A snippet that fails **raises**, it does not branch. The alternative looks
+    friendlier and is the single worst outcome available here: this node exists
+    to produce a value, so a failure with no error edge wired would end the run
+    with nothing bound and the flow reporting success — the silent-wrong-result
+    bug this project keeps paying for. A flow that genuinely wants to carry on
+    wraps the node in ``try``/``catch``, which is what those are for, and which
+    can state *what* it does when the value is missing.
+    """
+
+    def execute(self) -> dict[str, Any]:
+        from .code_node import MAX_STREAM_CHARS, CodeRefused, run_code
+
+        source = str(self.param("code", "") or "")
+        try:
+            result = run_code(
+                source,
+                inputs=self._inputs(),
+                root=PROJECT_ROOT,
+                writable=bool(self.param("writable", False)),
+                timeout=float(self.param("timeout", 5.0) or 5.0),
+                max_output_chars=int(self.param("max_output_chars", MAX_STREAM_CHARS)
+                                     or MAX_STREAM_CHARS),
+            )
+        except CodeRefused as exc:
+            raise NodeError(f"代码被沙箱拒绝: {exc}") from exc
+
+        if not result["ok"]:
+            raise NodeError(self._failure_message(result))
+
+        return {**result, "result": result["value"]}
+
+    @staticmethod
+    def _failure_message(result: dict[str, Any]) -> str:
+        """A failure the author can act on.
+
+        The captured streams travel with it: a snippet that printed its input
+        before raising is the most common way to diagnose one, and dropping that
+        output would send the author back to the editor to add a print they
+        already wrote.
+        """
+        parts = [f"{result['status']}: {result['error'] or '未知原因'}"]
+        for label in ("stdout", "stderr"):
+            text = (result.get(label) or "").strip()
+            if text:
+                parts.append(f"{label}: {text[:500]}")
+        if result.get("truncated"):
+            parts.append("输出已截断")
+        return " | ".join(parts)
+
+    def _inputs(self) -> dict[str, Any]:
+        """The scope values the snippet sees as bare names.
+
+        ``inputs`` is an explicit allow-list when given — a flow that passed
+        everything would expose the run's internals by accident. Blank means the
+        top-level scope, which is the convenient case for a flow authored by the
+        person who also wrote the nodes feeding it.
+        """
+        names = self.param("inputs", "")
+        if isinstance(names, (list, tuple)):
+            wanted = [str(n).strip() for n in names]
+        else:
+            text = str(names or "").strip()
+            wanted = [part.strip() for part in text.split(",")] if text else []
+        scope = self.ctx.scope.snapshot() if self.ctx is not None else {}
+        if not wanted:
+            return {k: v for k, v in scope.items() if k.isidentifier()}
+        missing = [n for n in wanted if n not in scope]
+        if missing:
+            # Naming them is the whole point: a typo in an input list otherwise
+            # surfaces as an undefined name inside the snippet, three hops away.
+            raise NodeError(f"inputs 里这些名字不在作用域中: {', '.join(missing)}")
+        return {n: scope[n] for n in wanted}
+
+
 def register_all(registry: NodeRegistry) -> NodeRegistry:
     """Register every built-in node type. Idempotent."""
     add = registry.register
@@ -1389,6 +2106,18 @@ def register_all(registry: NodeRegistry) -> NodeRegistry:
     spec("start", "开始", "控制流", StartNode, doc="流程入口，绑定触发变量。")
     spec("end", "结束", "控制流", EndNode, params=[_p("status", "select", "结束状态", "ok", choices=["ok", "error"]), _p("message", "text", "提示")], doc="终止流程，可选择以失败结束。")
     spec("wait", "等待", "控制流", WaitNode, params=[_p("seconds", "number", "等待秒数", 5.0)], doc="暂停 N 秒，主循环用它替代硬编码 sleep。")
+    spec("wait_for", "等待条件", "控制流", WaitForNode, params=[
+        _p("element", "text", "元素名", help="元素库中的名字（路径A）"),
+        _p("text", "text", "等待文本", help="屏幕上出现该文本（本地 OCR 逐帧读）"),
+        _p("image", "text", "模板图路径", help="与 capture 的截图比对"),
+        _p("color", "text", "颜色 RGB", help="例：20,120,220"),
+        _p("window", "text", "应用窗口", help="窗口是否存在"),
+        _p("state", "select", "等待状态", "appear", choices=["appear", "vanish"]),
+        _p("timeout", "number", "超时秒", 10.0),
+        _p("interval", "number", "轮询间隔秒", 0.5),
+        _p("haystack", "text", "搜索图路径", help="留空则用最近一次 capture 的图，没有就现截一张"),
+        _p("threshold", "number", "相似度阈值", 0.85),
+    ], outputs=["appeared", "matched", "attempts", "elapsed"], doc="轮询等待条件成立。超时走 timeout 端口而非报错，便于流程分支处理。")
     spec("set_var", "设置变量", "控制流", SetVarNode, params=[_p("name", "text", "变量名", required=True), _p("operation", "select", "操作", "set", choices=["set", "increment"]), _p("by", "number", "增量", 1, help="operation=increment 时的步长"), _p("value", "text", "固定值"), _p("expression", "text", "表达式", help="留空则使用固定值；否则对作用域求值")], outputs=["value"], doc="把一个值绑定进运行作用域；increment 用于自增计数器。")
     spec("log", "记录日志", "控制流", LogNode, params=[_p("message", "text", "内容", "{{chat_name}} 已处理 {{message_count}} 条"), _p("level", "select", "级别", "info", choices=["info", "warn", "error"])], doc="向运行日志写一行。")
     spec("condition", "条件分支", "控制流", ConditionNode, params=[_p("expression", "text", "表达式", required=True, help="例：unreplied_count > 0")], outputs=["true", "false"], doc="按表达式走 true / false 端口。")
@@ -1498,9 +2227,113 @@ def register_all(registry: NodeRegistry) -> NodeRegistry:
     # utility
     spec("http_request", "HTTP 请求", "通用", HttpRequestNode, params=[_p("url", "text", "URL", required=True), _p("method", "select", "方法", "GET", choices=["GET", "POST", "PUT", "DELETE"]), _p("headers", "textarea", "请求头", "{}"), _p("body", "textarea", "请求体"), _p("timeout", "number", "超时秒", 20)], outputs=["status", "body", "ok"], doc="发起 HTTP 请求。")
     spec("file", "文件读写", "通用", FileNode, params=[_p("mode", "select", "模式", "read", choices=["read", "write"]), _p("path", "text", "路径", required=True), _p("content", "textarea", "内容")], outputs=["content"], doc="在项目根目录内读写文本文件。")
+    spec("list_files", "列目录", "文件", ListFilesNode, params=[
+        _p("root", "text", "根目录", help="相对项目根；留空即项目根"),
+        _p("pattern", "text", "匹配", "*", help="glob，只作用于文件名，如 *.pdf"),
+        _p("recursive", "bool", "递归", True),
+        _p("include_dirs", "bool", "含子目录", False),
+        _p("follow_symlinks", "bool", "跟随符号链接", False, help="打开后可能走出根目录"),
+        _p("max_results", "number", "最多条数", 1000),
+    ], outputs=["count", "entries", "truncated", "total_bytes", "dir"],
+        doc="列出目录内容，按修改时间倒序。超过上限会截断并在 truncated 里说明，不会静默少列。")
+    spec("read_file", "读文件", "文件", ReadFileNode, params=[
+        _p("path", "text", "路径", required=True),
+    ], outputs=["content", "read", "reason", "lines"],
+        doc="读文本文件。非文本扩展名或超限会明确拒绝，而不是用 errors=replace 读出一堆乱码却报告成功。")
+    spec("write_file", "写文件", "文件", WriteFileNode, params=[
+        _p("path", "text", "路径", required=True),
+        _p("content", "textarea", "内容"),
+        _p("mode", "select", "模式", "write", choices=["write", "append"]),
+    ], outputs=["written", "bytes", "path", "mode"], doc="写文本文件，自动建父目录。")
+    spec("file_exists", "判断存在", "文件", FileExistsNode, params=[
+        _p("path", "text", "路径", required=True),
+    ], outputs=["exists", "is_dir", "is_file", "path"], doc="判断路径是否存在以及是文件还是目录。")
+    spec("move_file", "移动/重命名", "文件", MoveFileNode, params=[
+        _p("source", "text", "源路径", required=True),
+        _p("target", "text", "目标路径", required=True),
+        _p("overwrite", "bool", "覆盖目标", False),
+    ], outputs=["from", "to"], doc="移动或重命名。目标已存在且未开覆盖时直接报错，不静默替换。")
+    spec("copy_files", "批量复制", "文件", CopyFilesNode, params=[
+        _p("source", "text", "源目录", required=True),
+        _p("target", "text", "目标目录", required=True),
+        _p("pattern", "text", "匹配", "*"),
+        _p("recursive", "bool", "递归", True),
+        _p("overwrite", "bool", "覆盖同名", False, help="默认改名为 xxx (1).ext 并记在结果里"),
+    ], outputs=["count", "entries", "failed", "source", "target"],
+        doc="按 glob 批量复制。默认不覆盖，重名自动改名。单个文件失败不影响其余，结果里逐条列出。")
+    spec("delete_path", "删除", "文件", DeletePathNode, params=[
+        _p("path", "text", "路径", required=True),
+        _p("recursive", "bool", "递归删目录", False),
+    ], outputs=["deleted", "kind", "entries", "reason"],
+        doc="删除文件或目录。删目录必须显式开 recursive；软链目录只删链接本身，不会删到目标内容。")
+    spec("make_dir", "建目录", "文件", MakeDirNode, params=[
+        _p("path", "text", "路径", required=True),
+    ], outputs=["created", "is_dir", "path"], doc="创建目录及所有父目录。")
+    spec("table_filter", "表格筛选", "表格", TableFilterNode, params=[
+        _p("table", "variable", "表格", required=True, help="行数组 / JSON / CSV；接上一个表格节点"),
+        _p("format", "select", "输入格式", "auto", choices=["auto", "json", "csv"]),
+        _p("conditions", "textarea", "条件 JSON", required=True,
+           help='[{"column":"状态","op":"eq","value":"已付"}]；op 支持 eq/ne/gt/gte/lt/lte/contains/not_contains/startswith/endswith/in/not_in/is_empty/not_empty/matches'),
+        _p("logic", "select", "条件关系", "and", choices=["and", "or"]),
+        _p("delimiter", "text", "CSV 分隔符", ","),
+    ], outputs=["rows", "count", "matched", "of", "columns", "csv", "json"],
+        doc="按条件筛行。一条都没匹配上时返回空表——不是报错，也绝不是原表全量。")
+    spec("table_sort", "表格排序", "表格", TableSortNode, params=[
+        _p("table", "variable", "表格", required=True),
+        _p("format", "select", "输入格式", "auto", choices=["auto", "json", "csv"]),
+        _p("column", "text", "主排序列", help="留空则用 keys"),
+        _p("order", "select", "方向", "asc", choices=["asc", "desc"]),
+        _p("keys", "textarea", "多列排序", help='[{"column":"部门","order":"asc"},{"column":"金额","order":"desc"}]'),
+        _p("delimiter", "text", "CSV 分隔符", ","),
+    ], outputs=["rows", "count", "columns", "csv", "json"],
+        doc="排序。数字按数值排，不会把 10 排在 9 前面；混合列里数字排在字符串前。")
+    spec("table_join", "表格关联", "表格", TableJoinNode, params=[
+        _p("left", "variable", "左表", required=True),
+        _p("right", "variable", "右表", required=True),
+        _p("left_key", "text", "左表键", required=True),
+        _p("right_key", "text", "右表键", required=True),
+        _p("how", "select", "关联方式", "inner", choices=["inner", "left", "right", "outer"]),
+        _p("suffix", "text", "同名列后缀", "_r"),
+    ], outputs=["rows", "count", "columns", "csv", "json"],
+        doc="两表按键关联。inner 一行都没匹配上会直接报错——键名写错和「没有数据」长得一样，不能装作后者。")
+    spec("table_group", "表格分组", "表格", TableGroupNode, params=[
+        _p("table", "variable", "表格", required=True),
+        _p("format", "select", "输入格式", "auto", choices=["auto", "json", "csv"]),
+        _p("by", "text", "分组列", required=True, help="多列用逗号分隔"),
+        _p("aggs", "textarea", "聚合 JSON", required=True,
+           help='[{"column":"金额","agg":"sum","as":"合计"}]；agg 支持 count/sum/avg/min/max/first/last/unique'),
+        _p("delimiter", "text", "CSV 分隔符", ","),
+    ], outputs=["rows", "count", "columns", "csv", "json"], doc="分组聚合。")
+    spec("table_select", "表格取列", "表格", TableSelectNode, params=[
+        _p("table", "variable", "表格", required=True),
+        _p("format", "select", "输入格式", "auto", choices=["auto", "json", "csv"]),
+        _p("columns", "text", "保留列", help="逗号分隔，按此顺序输出；留空保留全部"),
+        _p("offset", "number", "起始行", 0),
+        _p("limit", "number", "最多行数"),
+        _p("delimiter", "text", "CSV 分隔符", ","),
+    ], outputs=["rows", "count", "columns", "csv", "json"], doc="取列、排序、分页。")
+    spec("table_info", "表格结构", "表格", TableInfoNode, params=[
+        _p("table", "variable", "表格", required=True),
+        _p("format", "select", "输入格式", "auto", choices=["auto", "json", "csv"]),
+        _p("preview", "number", "预览行数", 5),
+    ], outputs=["row_count", "columns", "declared_types", "observed_types", "preview"],
+        doc="看行数列名和每列实际类型。表格结果不对时先看这里。")
     spec("template", "模板渲染", "通用", TemplateNode, params=[_p("template", "textarea", "模板", required=True, raw=True, help="Jinja2 语法；{{var}} 与快速插值一致，另支持 {% for %} / {% if %} / 过滤器")], outputs=["text", "empty", "length"], doc="用 Jinja2 渲染多行文本。沙箱环境，未定义变量直接报错。")
     spec("llm", "大模型调用", "通用", LLMNode, params=[_p("provider", "text", "Provider", help="留空用默认 provider；在设置页配置网关与密钥"), _p("prompt", "textarea", "提示词", required=True), _p("system", "textarea", "系统提示"), _p("model", "text", "模型", help="留空则用 provider 的模型"), _p("base_url", "text", "接口地址", help="留空则用 provider 的地址"), _p("temperature", "number", "温度", help="留空则不发送该参数"), _p("max_tokens", "number", "最大 token", 1024), _p("timeout", "number", "超时秒")], outputs=["text", "empty", "model"], doc="自由调用大模型。网关与密钥由设置页的 provider 管理，节点参数可覆盖。generate_reply 是本项目的回复专用节点。")
     spec("tool", "调用工具", "通用", ToolNode, params=[_p("name", "text", "工具名", required=True), _p("arguments", "textarea", "参数 JSON", "{}")], outputs=["result"], doc="调用 ToolRegistry 中已注册的工具。")
+    spec("code", "代码片段", "代码", CodeNode, params=[
+        _p("code", "textarea", "代码", required=True, raw=True,
+           help="绑定 output 或定义 main() 返回结果。禁止 import / 类 / lambda / 下划线属性；文件只能走 fs.*"),
+        _p("inputs", "text", "输入变量", "",
+           help="逗号分隔。留空则把作用域顶层全部作为裸名字传入"),
+        _p("writable", "bool", "允许写文件", False, help="关闭时 fs.write_text / append_text / mkdir 会拒绝"),
+        _p("timeout", "number", "超时秒", 5.0, help="按行检查的软超时，超时报 timeout"),
+        _p("max_output_chars", "number", "输出截断", 100000),
+    ], outputs=["value", "stdout", "stderr", "truncated", "duration_ms"],
+        doc="执行一小段受限 Python。不能 import、不能开类、不能碰下划线属性，不能直接 open；"
+            "读写文件只能用 fs.*，且路径越出项目根目录会被拒绝。"
+            "失败会中断节点（用 try/catch 处理），不会静默当作成功。"
+            "这是限制爆炸半径，不是防有解释器的攻击者——内存不设上限。")
 
     return registry
 

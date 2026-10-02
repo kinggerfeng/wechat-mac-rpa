@@ -17,8 +17,10 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from .lease import Lease, read_lease
 from .store import RpaStore, get_store
 
 SHORTHANDS = {
@@ -157,6 +159,7 @@ class SchedulerStats:
     ticks: int = 0
     fired: int = 0
     skipped_busy: int = 0
+    skipped_claimed: int = 0
     errors: int = 0
     last_error: str = ""
     last_tick_at: float = 0.0
@@ -166,6 +169,7 @@ class SchedulerStats:
             "ticks": self.ticks,
             "fired": self.fired,
             "skipped_busy": self.skipped_busy,
+            "skipped_claimed": self.skipped_claimed,
             "errors": self.errors,
             "last_error": self.last_error,
             "last_tick_at": self.last_tick_at,
@@ -175,29 +179,55 @@ class SchedulerStats:
 class Scheduler:
     """Fires flows on a cron, in-process.
 
-    Two decisions worth stating. First, a tick that finds the bot already running
-    **skips** rather than queues: a queued WeChat automation would fire two flows
-    at one window, and the second would click on whatever the first left on
-    screen. Second, the loop re-derives "did this minute already fire" from a
-    persisted ``last_run_at`` rather than from in-memory state, so a process
-    restart inside the same minute does not double-fire.
+    Three decisions worth stating. First, a tick that finds the bot already
+    running **skips** rather than queues: a queued WeChat automation would fire
+    two flows at one window, and the second would click on whatever the first
+    left on screen.
+
+    Second, and third, both about not firing twice. The class docstring used to
+    claim the minute de-dupe came from a persisted ``last_run_at``; it came from
+    an in-memory dict, which is invisible to every other process on the same
+    database. Three dev servers sharing ``rpa.db`` fired one ``*/15`` schedule
+    three times an interval. There are now two independent guards — a
+    :class:`~src.flow.lease.Lease` so at most one process runs a loop at all, and
+    a compare-and-set on the schedule row for a process that starts after the
+    holder already claimed the minute. See ``src/flow/lease.py`` for why both are
+    needed.
     """
 
-    def __init__(self, store: RpaStore | None = None, tick_seconds: int = 20) -> None:
+    def __init__(
+        self,
+        store: RpaStore | None = None,
+        tick_seconds: int = 20,
+        lease: Lease | None = None,
+        port: int | None = None,
+    ) -> None:
         self.store = store or get_store()
         self.tick_seconds = max(5, tick_seconds)
         self.stats = SchedulerStats()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
-        #: flow_id -> the minute string it already fired in
-        self._fired: dict[str, str] = {}
+        self._standby_reason = ""
+        self.lease = lease or Lease(
+            Path(self.store.db_path).with_suffix(".scheduler.lock"), port=port
+        )
         self.on_fire: Callable[[str, str], None] | None = None
 
     def start(self) -> bool:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return False
+            if not self.lease.acquire():
+                # Not an error: another process on this database is doing the
+                # job. Recording it keeps the reason visible instead of
+                # leaving an operator to wonder why their schedules went quiet.
+                self.stats.last_error = (
+                    f"调度器已在 PID {read_lease(self.lease.path).pid} 运行，本进程不再重复调度"
+                )
+                self._standby_reason = self.stats.last_error
+                return False
+            self._standby_reason = ""
             self._stop.clear()
             self._thread = threading.Thread(target=self._loop, name="flow-scheduler", daemon=True)
             self._thread.start()
@@ -208,10 +238,29 @@ class Scheduler:
         thread = self._thread
         if thread is not None:
             thread.join(timeout=self.tick_seconds + 2)
+        self._thread = None
+        self.lease.release()
 
     @property
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
+
+    def status(self) -> dict[str, Any]:
+        """Everything the settings page needs to explain "is it armed, and by whom".
+
+        ``standby`` is the case that used to be invisible: the process is up,
+        the API answers, schedules are enabled — and nothing fires, because
+        another process holds the lease.
+        """
+        holder = self.lease.info() if self.lease.held else read_lease(self.lease.path)
+        return {
+            "running": self.running,
+            "standby": not self.lease.held,
+            "standby_reason": self._standby_reason,
+            "lease": holder.to_dict(),
+            "stats": self.stats.to_dict(),
+            "tick_seconds": self.tick_seconds,
+        }
 
     def _loop(self) -> None:
         # Fire immediately on boot for anything whose minute window is now, so a
@@ -230,7 +279,13 @@ class Scheduler:
 
         for row in self.store.list_schedules(enabled_only=True):
             schedule_id = row["id"]
-            if self._fired.get(schedule_id) == minute_key:
+            if row.get("last_fire_minute") == minute_key:
+                # Already claimed — usually by our own previous tick this
+                # minute, occasionally by a process that holds no lease but
+                # shares the database. Either way it is counted, because an
+                # operator asking "why did nothing fire" needs the skip to be
+                # visible, not just the fires.
+                self.stats.skipped_claimed += 1
                 continue
             try:
                 cron = CronSchedule.parse(row["cron"])
@@ -241,13 +296,14 @@ class Scheduler:
             if not cron.matches(now):
                 continue
 
-            self._fired[schedule_id] = minute_key
+            # Re-checked in the database, not in memory: the read above is a
+            # fast path, this is the one that actually decides.
+            if not self.store.claim_schedule_minute(schedule_id, minute_key):
+                self.stats.skipped_claimed += 1
+                continue
             outcome = self._fire(row, cron)
             fired.append(outcome)
 
-        # Bound the de-dupe map; a year of distinct minutes is plenty.
-        if len(self._fired) > 2000:
-            self._fired = dict(list(self._fired.items())[-1000:])
         return fired
 
     def _fire(self, row: dict[str, Any], cron: CronSchedule) -> dict[str, Any]:

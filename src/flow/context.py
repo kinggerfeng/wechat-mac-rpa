@@ -222,6 +222,9 @@ class FlowContext:
     abort_requested: bool = False
     started_at: float = field(default_factory=time.time)
     node_counts: dict[str, int] = field(default_factory=dict)
+    #: Set by the executor. A node running a nested flow re-emits that flow's
+    #: spans here so the parent trace shows the delegated steps inline.
+    span_sink: Any = None
 
     def service(self, name: str) -> Any:
         """Get a shared service, constructing it on first request."""

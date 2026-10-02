@@ -159,6 +159,11 @@ class FlowExecutor:
         graph = flow.graph
         scope = FlowScope({**(graph.get("variables") or {}), **(variables or {})})
         self.ctx = FlowContext(scope=scope, run_id=run_id, flow_id=flow.id)
+        # Exposed so a node that runs a nested flow can re-emit that flow's spans
+        # into this run's trace. Without it a sub-flow's steps are invisible in
+        # the parent's trace panel, which is where an operator looks when a
+        # delegated step misbehaves.
+        self.ctx.span_sink = self.span_hook
         default_path = graph.get("default_path")
         self._flow_default_path = str(default_path) if default_path else None
         result = RunResult(run_id=run_id, flow_id=flow.id, status="ok")
@@ -267,6 +272,11 @@ class FlowExecutor:
         spec = self.registry.get(node.type)
         instance = spec.handler(node.params)
         instance.ctx = self.ctx
+        # The node's graph id. A loop needs it to key its iteration counter: a
+        # handler instance is rebuilt for every attempt, so id(instance) is a
+        # different key each pass and a max_iterations cap keyed that way never
+        # trips.
+        instance.node_id = node.id
         # Design-time declarations chosen while authoring the flow.
         instance.path = node.path or self._flow_default_path
         instance.target = node.target

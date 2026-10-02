@@ -283,8 +283,10 @@ app.add_middleware(
 
 
 from .rpa_api import router as rpa_router  # noqa: E402
+from .record_api import router as record_router  # noqa: E402
 
 app.include_router(rpa_router)
+app.include_router(record_router)
 
 
 @app.get("/api/health")

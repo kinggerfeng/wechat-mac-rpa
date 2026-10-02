@@ -34,6 +34,12 @@ def register_default_services(ctx: FlowContext, dry_run: bool = False) -> None:
     ctx.register_service_factory("profile", _build_profile)
     ctx.register_service_factory("perception", lambda: _build_perception(ctx, dry_run))
     ctx.register_service_factory("capture", lambda: _build_capture(ctx, dry_run))
+    # Local macOS Vision OCR. elements.py resolves an element's ocr_text anchor
+    # through this service, so without the registration every OCR-anchored
+    # element raised "未注册的服务: 'ocr'" and silently fell back to a fixed rect
+    # — the element appeared to work until the window moved. Vision runs on
+    # device, so unlike the VLM path it costs nothing per call.
+    ctx.register_service_factory("ocr", _build_ocr)
     ctx.register_service_factory("sender", _build_sender)
     ctx.register_service_factory("session", _build_session)
     ctx.register_service_factory("memory", _build_memory)
@@ -114,6 +120,18 @@ def _build_capture(ctx: FlowContext | None = None, dry_run: bool = False) -> Any
     from src.capture.window_capture import WindowCapture
 
     return WindowCapture()
+
+
+def _build_ocr() -> Any:
+    """On-device OCR via the macOS Vision framework.
+
+    Kept separate from the VLM in ``_build_perception`` on purpose: an element's
+    anchor text is re-read on every single resolve, and a model call per click
+    would make the element library the most expensive part of a flow.
+    """
+    from src.ocr.vision_ocr import VisionOCREngine
+
+    return VisionOCREngine()
 
 
 def _build_perception(ctx: FlowContext, dry_run: bool) -> Any:

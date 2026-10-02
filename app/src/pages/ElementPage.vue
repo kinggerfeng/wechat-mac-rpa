@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { Delete, Plus, Refresh, Search } from "@element-plus/icons-vue";
+import { Aim, Delete, Plus, Refresh, Search } from "@element-plus/icons-vue";
+
+import ElementPickerDialog from "../components/ElementPickerDialog.vue";
 
 import { api, ApiError } from "../api/client";
 import { useEngineStore } from "../stores/engine";
@@ -44,6 +46,7 @@ const busy = ref("");
 const resolved = ref<Record<string, Located>>({});
 
 const createOpen = ref(false);
+const pickerOpen = ref(false);
 const saving = ref(false);
 const saveError = ref("");
 const formName = ref("");
@@ -157,6 +160,11 @@ async function remove(element: Element): Promise<void> {
   }
 }
 
+/** A freshly picked element is already stored; just show it in the list. */
+function onPicked(): void {
+  void load();
+}
+
 function openCreate(): void {
   formName.value = "";
   formKind.value = "rect";
@@ -222,6 +230,7 @@ onMounted(() => {
       </div>
       <div class="head-actions">
         <el-button :icon="Refresh" size="small" :loading="loading" @click="load">刷新</el-button>
+        <el-button :icon="Aim" size="small" @click="pickerOpen = true">拾取元素</el-button>
         <el-button type="primary" size="small" :icon="Plus" @click="openCreate">新增元素</el-button>
       </div>
     </header>
@@ -407,6 +416,12 @@ onMounted(() => {
         <el-button size="small" type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
+
+    <ElementPickerDialog
+      v-model="pickerOpen"
+      :flow-id="null"
+      @picked="onPicked"
+    />
   </div>
 </template>
 

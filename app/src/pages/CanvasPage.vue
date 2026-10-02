@@ -15,6 +15,7 @@ import EdgeLayer from "../components/canvas/EdgeLayer.vue";
 import InspectorPanel from "../components/canvas/InspectorPanel.vue";
 import NodeCard from "../components/canvas/NodeCard.vue";
 import NodePalette from "../components/canvas/NodePalette.vue";
+import RecorderPanel from "../components/RecorderPanel.vue";
 import TracePanel from "../components/canvas/TracePanel.vue";
 import { api } from "../api/client";
 import { useFlowStore } from "../stores/flow";
@@ -52,6 +53,7 @@ const selectedEdgeId = ref<string | null>(null);
 const zoom = ref(1);
 const pan = ref({ x: 0, y: 0 });
 const showTrace = ref(true);
+const showRecorder = ref(false);
 const dryRun = ref(true);
 const runningFlow = ref(false);
 const targets = ref<string[]>(["wechat", "any_window"]);
@@ -361,6 +363,11 @@ watch(
     }
   },
 );
+/** A recording was committed as a new flow: open it so the author can refine it. */
+function onRecorded(flowId: string): void {
+  showRecorder.value = false;
+  void router.push({ name: "canvas", params: { id: flowId } });
+}
 </script>
 
 <template>
@@ -404,6 +411,7 @@ watch(
         </el-button>
         <el-button v-else size="small" type="danger" :icon="VideoPause" @click="abort">中止</el-button>
         <el-button size="small" text @click="showTrace = !showTrace">轨迹</el-button>
+        <el-button size="small" text @click="showRecorder = !showRecorder">录制</el-button>
 
         <template v-if="narrow">
           <el-button
@@ -537,6 +545,12 @@ watch(
       />
     </div>
 
+    <RecorderPanel
+      v-if="showRecorder"
+      class="recorder-dock"
+      @committed="onRecorded"
+    />
+
     <TracePanel
       v-if="showTrace"
       :running-node-ids="runningNodeIds"
@@ -662,6 +676,13 @@ watch(
    connected but had no readable nodes. */
 .node-anchor {
   position: absolute;
+}
+
+.recorder-dock {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  padding: 12px 18px 14px;
 }
 
 .surface-empty {

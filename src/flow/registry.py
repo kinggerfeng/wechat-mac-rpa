@@ -102,6 +102,9 @@ class BaseNode:
         self.params = params or {}
         self.path: str | None = None
         self.target: str | None = None
+        #: Set by the executor before each attempt. A loop keys its iteration
+        #: counter on this; the instance itself is rebuilt every attempt.
+        self.node_id: str = ""
 
     def param(self, name: str, default: Any = None) -> Any:
         if name in self.params and self.params[name] not in (None, ""):
@@ -225,8 +228,13 @@ def get_node_registry() -> NodeRegistry:
     global _registry
     with _registry_lock:
         if _registry is None:
-            from . import builtin_nodes  # noqa: F401  (registration side effect)
+            from . import builtin_nodes, control_nodes, system_nodes
 
             _registry = NodeRegistry()
             builtin_nodes.register_all(_registry)
+            # Control flow (loops, error regions, sub-flows) and the two
+            # out-of-graph node types live in their own modules because their
+            # rules are load-bearing enough to deserve a file each.
+            control_nodes.register_all(_registry)
+            system_nodes.register_all(_registry)
         return _registry

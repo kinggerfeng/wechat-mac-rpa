@@ -10,12 +10,19 @@ import type {
   CronPreview,
   DashboardSummary,
   Element,
+  ElementTemplate,
   Flow,
   FlowGraph,
   FlowSummary,
   Located,
   NodeCatalogue,
   PermissionReport,
+  PickResult,
+  PickScreenshot,
+  RecordCommitResult,
+  RecordedAction,
+  RecordStatus,
+  RecordStopResult,
   Run,
   Schedule,
   Span,
@@ -134,6 +141,37 @@ export const api = {
   previewCron: (cron: string) => post<CronPreview>("/schedules/cron/preview", { cron }),
 
   webhookInfo: () => request<WebhookInfo>("/webhook/info"),
+
+  // ── recording ──
+  //
+  // The recorder watches the user's own input, so its state is process-wide and
+  // the status endpoint is polled rather than pushed: there is no run to hang an
+  // SSE subscription off, and a dead monitor thread has to be visible rather than
+  // showing a spinner forever.
+  recordStatus: () => request<RecordStatus>("/record/status"),
+  recordStart: () => post<{ recording: boolean; started_at: number }>("/record/start"),
+  recordActions: () => request<{ recording: boolean; count: number; actions: RecordedAction[] }>("/record/actions"),
+  recordStop: (payload: { name?: string; description?: string } = {}) =>
+    post<RecordStopResult>("/record/stop", payload),
+  recordDiscard: () => post<{ recording: boolean; count: number }>("/record/discard"),
+  recordCommit: (payload: { name: string; description?: string }) =>
+    post<RecordCommitResult>("/record/commit", payload),
+
+  // ── picking ──
+  pickScreenshot: (target = "wechat") =>
+    request<PickScreenshot>(`/pick/screenshot?target=${encodeURIComponent(target)}`),
+  pick: (payload: {
+    name: string;
+    image_path: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    flow_id?: string | null;
+    save_template?: boolean;
+    min_confidence?: number;
+  }) => post<PickResult>("/pick", payload),
+  pickTemplates: () => request<{ templates: ElementTemplate[] }>("/pick/templates"),
 };
 
 /**

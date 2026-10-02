@@ -305,3 +305,70 @@ export interface ValidateResponse {
   errors: ValidationIssue[];
   warnings: ValidationIssue[];
 }
+
+// ── recording & picking ───────────────────────────────────────────────────
+//
+// A recording is a list of what the user did, not a flow. The client keeps the
+// raw actions and the generated graph side by side so the panel can show the
+// difference between "captured" and "committed".
+
+export interface RecordedAction {
+  index: number;
+  kind: "click" | "double_click" | "scroll" | "type_keys" | "hotkey";
+  at: number;
+  x: number;
+  y: number;
+  button: number;
+  clicks: number;
+  text: string;
+  scroll_delta: number;
+  modifiers: string[];
+  app: string;
+  label: string;
+  node_type: string;
+  params: Record<string, unknown>;
+}
+
+export interface RecordStatus {
+  recording: boolean;
+  error: string;
+  count: number;
+}
+
+export interface RecordStopResult {
+  recording: boolean;
+  error: string;
+  count: number;
+  actions: RecordedAction[];
+  graph: FlowGraph;
+  warnings: string[];
+}
+
+export interface RecordCommitResult {
+  flow_id: string;
+  name: string;
+  action_count: number;
+  warnings: string[];
+}
+
+/** Which of the three pick strategies was used, and what that means. */
+export type PickStrategy = "ocr_anchor" | "image_template" | "fixed_rect";
+
+export interface PickResult {
+  element: Element;
+  strategy: PickStrategy;
+  advice: string;
+}
+
+export interface PickScreenshot {
+  image_path: string;
+  scale_factor: number;
+  window_origin: [number, number, number, number] | null;
+}
+
+export interface ElementTemplate {
+  name: string;
+  path: string;
+  size: number;
+  modified: number;
+}

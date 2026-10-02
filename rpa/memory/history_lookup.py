@@ -22,16 +22,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from rpa.memory.paths import index_path as _index_path
+
 _logger = logging.getLogger("rpa.memory.history_lookup")
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_INDEX_PATH = (
-    _PROJECT_ROOT / "data" / "memory" / "cache" / "vector_index_dense_messages.pkl"
-)
-
-
-def _index_path() -> Path:
-    return Path(os.environ.get("WECHAT_HISTORY_INDEX_PATH", _DEFAULT_INDEX_PATH))
 
 
 class HistoryLookup:

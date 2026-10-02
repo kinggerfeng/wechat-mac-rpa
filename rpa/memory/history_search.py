@@ -17,6 +17,10 @@
 索引/模型路径与依赖均可通过环境变量覆盖，便于跨机器迁移：
 - WECHAT_HISTORY_INDEX_PATH  dense 消息索引 pickle 路径
 - WECHAT_BGE_MODEL_PATH      BGE 模型目录（含 tokenizer + onnx/pytorch 权重）
+
+路径本身由 `rpa.memory.paths` 统一定义。建库脚本和检索器必须用同一份：
+用不同的 BGE 权重建索引、再用另一份检索，向量空间不兼容，检索会自信地
+返回错误结果而不报任何错。
 """
 
 import logging
@@ -29,25 +33,10 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from rpa.memory.message_index_store import MessageIndexStore
+from rpa.memory.paths import index_path as _index_path
+from rpa.memory.paths import model_path as _model_path
 
 _logger = logging.getLogger("rpa.memory.history_search")
-
-# ── 默认路径：指向项目 data/memory/cache，可用环境变量覆盖 ──
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_INDEX_PATH = (
-    _PROJECT_ROOT / "data" / "memory" / "cache" / "vector_index_dense_messages.pkl"
-)
-_DEFAULT_MODEL_PATH = (
-    _PROJECT_ROOT / "data" / "memory" / "models" / "bge-small-zh-v1.5"
-)
-
-
-def _index_path() -> Path:
-    return Path(os.environ.get("WECHAT_HISTORY_INDEX_PATH", _DEFAULT_INDEX_PATH))
-
-
-def _model_path() -> Path:
-    return Path(os.environ.get("WECHAT_BGE_MODEL_PATH", _DEFAULT_MODEL_PATH))
 
 
 def _try_import_encoder_deps() -> Optional[str]:

@@ -132,6 +132,33 @@ class WindowCapture:
             _logger.warning(f"获取屏幕缩放因子失败: {e}")
         return 1.0
 
+    def _screen_recording_error(self) -> Optional[str]:
+        """Why this capture cannot possibly work, or None if it still might.
+
+        ``CGWindowListCopyWindowInfo`` needs no TCC grant, so on a machine that
+        was never authorised for screen recording, window discovery and the
+        size check both succeed. The failure only surfaces later, at
+        ``screencapture`` time, as an opaque non-zero exit — and by then the
+        error blames the window size, sending the operator to resize a window
+        that was never the problem.
+
+        ``CGPreflightScreenCaptureAccess`` is used to *disprove* only: False
+        means this process really cannot capture, which is the direction that
+        was verified against ``screencapture``'s actual exit code. True is not
+        treated as proof and never short-circuits the normal path.
+        """
+        try:
+            if Quartz.CGPreflightScreenCaptureAccess():
+                return None
+        except AttributeError:
+            return None  # pre-10.15: the OS never gated screen capture
+        except Exception as exc:  # noqa: BLE001
+            return f"屏幕录制权限检测失败: {exc}"
+        return (
+            "缺少「屏幕录制」权限，screencapture 取不到画面。"
+            "请在「系统设置 → 隐私与安全性 → 录屏与系统录音」中授权本应用，然后重启应用。"
+        )
+
     def _to_screencapture_region(self, rect: Rect) -> str:
         """将 Rect 转换为 screencapture -R 参数格式"""
         return f"{rect.x},{rect.y},{rect.width},{rect.height}"
@@ -208,8 +235,16 @@ class WindowCapture:
             WindowNotFoundError: 未找到任何微信窗口
             WeChatNotReadyError: 窗口尺寸异常，可能需要扫码登录
             CaptureValidationError: 截图内容验证失败
+            RuntimeError: 缺少屏幕录制权限
         """
         t_capture_start = time.time()
+        # Checked before window discovery on purpose: the grant gates the whole
+        # capture, and reporting it first means an unauthorised machine is told
+        # what it actually lacks instead of what it should resize.
+        blocked = self._screen_recording_error()
+        if blocked:
+            raise RuntimeError(blocked)
+
         # 清理旧截图（超过1小时的临时文件，避免 /tmp 无限累积）
         try:
             cutoff = time.time() - 3600

@@ -108,3 +108,71 @@ def test_the_legacy_subtree_moved_sideways_not_down():
             assert resolved == REPO_ROOT or REPO_ROOT in resolved.parents, (
                 f"{path.name} climbs to {resolved}, outside the repository"
             )
+
+
+def test_no_source_file_is_silently_untracked():
+    """A file that exists on disk but not in git is missing from every clone.
+
+    ``.gitignore`` said ``data/``. A gitignore pattern with a trailing slash
+    and no leading one matches a directory of that name at *any* depth, so it
+    also matched ``tools/data/`` — 13 operator scripts that were on disk, green
+    in the test suite, and absent from every fresh checkout. No test fails
+    when this happens; the symptom is a colleague asking where the script went.
+
+    So the check is the blunt one: walk the shipped source trees, and a file is
+    a bug only when it is on disk, *not* tracked, and *not* ignored — i.e. it
+    fell through both nets. A file that is ignored on purpose is fine; a file
+    git was never told about is a hole nobody can see.
+    """
+    import subprocess
+
+    shipped = ["rpa", "tools", "tests", "apps/desktop/src", "apps/desktop/src-tauri/src"]
+    lost: list[str] = []
+
+    for tree in shipped:
+        for path in sorted((REPO_ROOT / tree).rglob("*")):
+            if not path.is_file() or "__pycache__" in path.parts:
+                continue
+            relative = path.relative_to(REPO_ROOT).as_posix()
+
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", relative],
+                cwd=REPO_ROOT, capture_output=True, text=True,
+            )
+            if tracked.returncode == 0:
+                continue  # in the index; nothing to report
+
+            ignored = subprocess.run(
+                ["git", "check-ignore", "-q", "--", relative],
+                cwd=REPO_ROOT, capture_output=True, text=True,
+            )
+            if ignored.returncode == 0:
+                continue  # ignored deliberately
+
+            lost.append(relative)
+
+    assert not lost, (
+        f"on disk, untracked, and not ignored: {lost}. A .gitignore rule without "
+        f"a leading slash matches at every depth — check that a directory such as "
+        f"tools/data/ is not being swallowed by a root-level rule."
+    )
+
+
+def test_the_runtime_data_rule_is_anchored_to_the_repository_root():
+    """The one line that caused it, asserted directly.
+
+    ``data/`` and ``/data/`` look the same in a diff and behave completely
+    differently; this names the difference where someone will edit it next.
+    """
+    patterns = [
+        line.strip()
+        for line in (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    assert "/data/" in patterns, (
+        "the runtime-state rule must be written `/data/` so it cannot also match "
+        "tools/data/"
+    )
+    assert "data/" not in patterns, (
+        "a bare `data/` matches tools/data/ as well and hides 13 tracked scripts"
+    )

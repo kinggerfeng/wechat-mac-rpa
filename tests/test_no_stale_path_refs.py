@@ -38,9 +38,9 @@ SKIP_ANY = {"__pycache__", "node_modules", "target", "dist",
             ".pytest_cache", ".mypy_cache"}
 
 #: The Vue app's owns the same word ``src/`` for a different tree entirely.
-#: Compared as whole segments, because the prefix ``"app/src"`` also matches
-#: ``app/src-tauri/``, which is the Rust crate that does need rewriting.
-SKIP_TREES = (("app", "src"), ("app", "dist"), ("app", "src-tauri", "target"))
+#: Compared as whole segments, because the prefix ``"apps/desktop/src"`` also matches
+#: ``apps/desktop/src-tauri/``, which is the Rust crate that does need rewriting.
+SKIP_TREES = (("apps", "desktop", "src"), ("apps", "desktop", "dist"), ("apps", "desktop", "src-tauri", "target"))
 
 #: Only files that can break at run time. ``.rs`` is here because the Tauri
 #: shell is what launches the Python API — ``rpa.backend.app:app`` is a string
@@ -87,7 +87,7 @@ def _code_files() -> list[Path]:
             continue
         if any(relative.parts[:len(tree)] == tree for tree in SKIP_TREES):
             continue
-        if relative.parts[:2] == ("app",) and relative.name == "tsconfig.json":
+        if relative.parts == ("apps", "desktop", "tsconfig.json"):
             continue
         files.append(relative)
     return sorted(files)
@@ -195,19 +195,19 @@ def test_the_retired_trees_are_actually_gone():
 
 
 def test_the_vue_app_still_typechecks_its_own_sources():
-    """`app/src/` is the frontend's, and must survive the Python rename.
+    """`apps/desktop/src/` is the frontend's, and must survive the Python rename.
 
     Pointing ``tsconfig.json`` at ``rpa/**`` does not fail. Vite builds from
     its own config, and ``vue-tsc`` reads an ``include`` that matches no files
     and reports a clean run — a type check of nothing, which is the same
     failure dressed as a pass.
     """
-    config = (REPO_ROOT / "app" / "tsconfig.json").read_text(encoding="utf-8")
+    config = (REPO_ROOT / "apps" / "desktop" / "tsconfig.json").read_text(encoding="utf-8")
 
-    assert '"src/**/*.ts"' in config, "tsconfig no longer includes app/src"
-    assert '"src/**/*.vue"' in config, "tsconfig no longer includes app/src components"
+    assert '"src/**/*.ts"' in config, "tsconfig no longer includes apps/desktop/src"
+    assert '"src/**/*.vue"' in config, "tsconfig no longer includes apps/desktop/src components"
     assert "rpa/" not in config, "the Python package leaked into the frontend tsconfig"
-    assert (REPO_ROOT / "app" / "src").is_dir(), "the frontend source directory is gone"
+    assert (REPO_ROOT / "apps" / "desktop" / "src").is_dir(), "the frontend source directory is gone"
 
 
 def test_the_two_rpa_trees_are_the_same_package():

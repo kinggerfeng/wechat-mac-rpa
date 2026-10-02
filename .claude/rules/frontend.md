@@ -1,6 +1,6 @@
 # 前端改动流程与硬约束
 
-> 改 `app/` 时加载。本文只记**会踩、且踩了会静默出错**的坑。
+> 改 `apps/desktop/` 时加载。本文只记**会踩、且踩了会静默出错**的坑。
 > 与 `debugging.md`（改 `rpa/` 时）并列，两者都服从 `CLAUDE.md` 的铁律。
 
 ## 技术栈与硬约束
@@ -11,7 +11,7 @@
 | 路由 | `createWebHashHistory()` —— Tauri 从文件系统加载，path history 刷新必 404 |
 | 组件库 | Element Plus，**不新增依赖** |
 | 图标 | `@element-plus/icons-vue` |
-| 样式 | scoped `<style>`，颜色一律取 `rpa/styles/tokens.css` 的 CSS 变量 |
+| 样式 | scoped `<style>`，颜色一律取 `apps/desktop/src/styles/tokens.css` 的 CSS 变量 |
 | 静态检查 | `npx vue-tsc --noEmit -p tsconfig.json` 必须退出 0 |
 
 **不许自造配色**。tokens 里已有 `--green / --orange / --line / --paper / --canvas /
@@ -24,10 +24,10 @@
 
 | 文件 | 抄它的什么 |
 |---|---|
-| `app/rpa/pages/RunHistoryPage.vue` | 列表页骨架：loading / loadError / empty 三态 |
-| `app/rpa/pages/CanvasPage.vue` | 两栏布局、长耗时动作的进度反馈 |
-| `app/rpa/api/client.ts` | 所有请求的唯一入口，**页面里不许裸 `fetch`** |
-| `app/rpa/types/index.ts` | 手写契约，**不许 `any` 糊过去** |
+| `apps/desktop/src/pages/RunHistoryPage.vue` | 列表页骨架：loading / loadError / empty 三态 |
+| `apps/desktop/src/pages/CanvasPage.vue` | 两栏布局、长耗时动作的进度反馈 |
+| `apps/desktop/src/api/client.ts` | 所有请求的唯一入口，**页面里不许裸 `fetch`** |
+| `apps/desktop/src/types/index.ts` | 手写契约，**不许 `any` 糊过去** |
 
 ---
 
@@ -134,7 +134,7 @@ graph 里的节点若缺 `position`，`NodeCard.vue` 读 `node.position.x` 直�
 ## 提交前自查
 
 ```bash
-cd app
+cd apps/desktop
 npx vue-tsc --noEmit -p tsconfig.json   # 必须退出 0
 npm run build                            # 必须成功
 ```

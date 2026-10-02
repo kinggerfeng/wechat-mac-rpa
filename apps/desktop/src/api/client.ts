@@ -52,14 +52,24 @@ import type {
 } from "../types";
 
 /**
- * Backend origin. Overridable so a build can be pointed at another instance
- * (the packaged app runs 8768 from RPAStudio.app, a dev shell may run 8767)
- * without a rebuild. Read once at module load: the value cannot change mid
- * session, and a request that switched origins would be a cross-instance
- * read nobody asked for.
+ * Backend origin, read from the same declaration the Rust shell spawns uvicorn
+ * on. It used to be a literal here and a `const` in `lib.rs`, and they
+ * disagreed — the shell spawned on 8767 while this defaulted to 8768, so a
+ * dev build talked to the already-installed app instead of the process it had
+ * just started. Read once at module load: the value cannot change mid session,
+ * and a request that switched origins would be a cross-instance read nobody
+ * asked for.
  */
+import apiPortDeclaration from "../../api-port.txt?raw";
+
+const API_PORT = Number(apiPortDeclaration.trim());
+
+if (!Number.isInteger(API_PORT) || API_PORT < 1 || API_PORT > 65535) {
+  throw new Error(`api-port.txt 必须是合法端口号，实际为 ${apiPortDeclaration}`);
+}
+
 const CONFIGURED_BASE = (import.meta.env?.VITE_API_BASE as string | undefined)?.trim();
-export const API_BASE = CONFIGURED_BASE || "http://127.0.0.1:8768";
+export const API_BASE = CONFIGURED_BASE || `http://127.0.0.1:${API_PORT}`;
 
 export class ApiError extends Error {
   constructor(

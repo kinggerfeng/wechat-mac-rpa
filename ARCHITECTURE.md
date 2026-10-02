@@ -14,7 +14,7 @@ rpa/            the single Python package — engine, bot, memory, desktop API
   flow/         RPA orchestration: registry, executor, expression engine
   backend/      desktop FastAPI, launched by Tauri via uvicorn
   bot/ db/ memory/ reply/ action/ capture/ ocr/ …   the L1–L5 bot layers
-app/            Tauri + Vue 3 desktop shell
+apps/desktop/    Tauri + Vue 3 desktop shell
 tools/          one-off scripts, grouped bench / data / persona / wiki / ops / server
 tests/          the whole test suite; tests/e2e needs real hardware
 data/           runtime state, gitignored

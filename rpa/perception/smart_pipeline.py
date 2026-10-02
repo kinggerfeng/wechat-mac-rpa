@@ -30,6 +30,7 @@ from rpa.layout.profile import LayoutProfile
 from rpa.models.base import MEDIA_MESSAGE_TYPES, ChatListItem, ChatMessage, PerceptionResult, Rect, SenderType
 from rpa.ocr.vision_ocr import VisionOCREngine
 from rpa.utils.chat_utils import _is_group_chat_name
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 _logger = logging.getLogger("rpa.runtime.smart_pipeline")
 
@@ -163,7 +164,7 @@ class _QwenAPIClient:
         )
         self._client = OpenAI(
             api_key=self.api_key,
-            base_url=os.environ.get("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            base_url=_base_url("dashscope"),
             http_client=http_client,
         )
 

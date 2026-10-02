@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from rpa.models.base import ChatMessage, SenderType
+from rpa.net.endpoints import base_url, is_configured  # 单一出口：rpa/net/endpoints.py
 from rpa.reply.evidence_utils import strip_assistant_history_lines
 from rpa.reply.few_shot import PersonaFewShotRetriever
 from rpa.reply.session_memory import SessionMemory, _extract_query_key
@@ -403,15 +404,16 @@ class ReplyGenerator:
             return [], ""
         if self._fact_check_client is None:
             api_key = os.environ.get("DASHSCOPE_API_KEY", "")
-            base_url = os.environ.get("DASHSCOPE_BASE_URL", "")
-            if not api_key or not base_url:
+            # 事实核查默认不开：只有显式配了 base_url 才启用（既有语义）。
+            # 地址解析交给注册表，否则禁用开关管不到这里。
+            if not api_key or not is_configured("dashscope"):
                 return [], ""
             try:
                 from rpa.utils.qwen_client import QwenClient
                 self._fact_check_client = QwenClient(
                     model=os.environ.get("FACT_CHECK_MODEL", "qwen3.6-flash"),
                     api_key=api_key,
-                    base_url=base_url,
+                    base_url=base_url("dashscope"),
                 )
             except Exception as e:
                 _logger.warning("[FactCheck] 客户端初始化失败: %s", e)

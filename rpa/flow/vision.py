@@ -28,9 +28,9 @@ import os
 import time
 from dataclasses import dataclass, field
 from typing import Any
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 DEFAULT_MODEL = "qwen3.6-flash"
-DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 LOCATE_PROMPT = """你是一个 GUI 视觉定位器。用户会描述他想在屏幕上点哪里。
 
@@ -165,7 +165,7 @@ class VisionClient:
     ) -> None:
         self.api_key = api_key or os.environ.get("DASHSCOPE_API_KEY")
         self.model = model or os.environ.get("VISION_MODEL") or DEFAULT_MODEL
-        self.base_url = base_url or os.environ.get("DASHSCOPE_BASE_URL") or DEFAULT_BASE_URL
+        self.base_url = base_url or _base_url("dashscope")
         if not self.api_key:
             raise RuntimeError("DASHSCOPE_API_KEY 未设置，多模态定位不可用")
         import httpx

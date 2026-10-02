@@ -5,6 +5,7 @@ import ssl
 import urllib.request
 from typing import Any, Dict
 from urllib.parse import urlparse
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 
 def _fetch_stock(codes: str) -> Dict[str, Any]:
@@ -13,7 +14,7 @@ def _fetch_stock(codes: str) -> Dict[str, Any]:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    url = f"https://qt.gtimg.cn/q={codes}"
+    url = f"{_base_url('gtimg')}/q={codes}"
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         return {"error": f"不支持的 URL scheme: {parsed.scheme}"}

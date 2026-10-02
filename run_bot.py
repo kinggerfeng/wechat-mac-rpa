@@ -17,6 +17,7 @@ if env_file.exists():
 
 from rpa.bot.wechat_bot import WeChatBot
 from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from rpa.net.endpoints import base_url as _base_url  # 单一出口：rpa/net/endpoints.py
 from rpa.perception.smart_pipeline import SmartPerceptionPipeline
 from rpa.utils.qwen_client import QwenClient
 
@@ -65,7 +66,7 @@ def main():
         print("=" * 60)
         print("配置:")
         model_name = os.environ.get("LLM_MODEL", "deepseek-v4-flash")
-        base_url = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com/v1")
+        base_url = _base_url("deepseek")
         print(f"  • LLM: {model_name} ({base_url})")
         print("  • Prompt: DT style (data/persona.md)")
         print("  • 检索: 待启用")

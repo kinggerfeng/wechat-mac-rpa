@@ -6,6 +6,7 @@ Kimi LLM 客户端
 
 import os
 from typing import Dict, List, Optional
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 try:
     from openai import OpenAI
@@ -21,7 +22,7 @@ class KimiClient:
 
         self.client = OpenAI(
             api_key=os.getenv("OPENAI_API_KEY"),
-            base_url=os.getenv("OPENAI_BASE_URL", "https://api.kimi.com/coding/v1"),
+            base_url=_base_url("kimi"),
             default_headers={
                 "User-Agent": f"{agent_name}/0.1.39",
                 "X-Coding-Agent": agent_name,

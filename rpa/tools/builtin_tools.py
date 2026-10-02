@@ -10,6 +10,7 @@ from .print_3d_tools import register_print3d_tools
 from .stock_tools import stock_query
 from .tool_registry import get_registry
 from .tuya_tools import register_tuya_tools
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 
 _DIRECT_PROXIES = {"http": "", "https": ""}
@@ -27,7 +28,7 @@ def _get_weather(city: str = "", date: str = "今天") -> str:
         return "请提供城市名称"
     try:
         # 使用 wttr.in 免费天气 API
-        url = f"https://wttr.in/{city}?format=j1&lang=zh"
+        url = f"{_base_url('wttr')}/{city}?format=j1&lang=zh"
         resp = requests.get(url, timeout=10, proxies=_DIRECT_PROXIES)
         data = resp.json()
         current = data["current_condition"][0]
@@ -47,7 +48,8 @@ def _web_search(query: str = "") -> str:
     try:
         from bs4 import BeautifulSoup
 
-        url = "https://www.so.com/s"
+        so = _base_url("so")
+        url = f"{so}/s"
         params = {"q": query}
         headers = {
             "User-Agent": (
@@ -75,7 +77,7 @@ def _web_search(query: str = "") -> str:
                     mdurl = str(a.get("data-mdurl", "") or "")
                     if mdurl and mdurl.startswith(("http://", "https://")):
                         link = mdurl
-                    elif link.startswith("https://www.so.com/link?"):
+                    elif link.startswith(f"{so}/link?"):
                         parsed = urlparse(link)
                         qs = parse_qs(parsed.query)
                         if "url" in qs:

@@ -8,6 +8,7 @@ import os
 import time
 from collections import defaultdict
 from typing import Dict, List, Optional
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 try:
     from openai import OpenAI
@@ -26,7 +27,7 @@ class QwenClient:
         api_key = api_key or os.environ.get("LLM_API_KEY") or os.environ.get("DEEPSEEK_API_KEY") or ""
         if not api_key:
             raise RuntimeError("DEEPSEEK_API_KEY 或 LLM_API_KEY 未设置")
-        base_url = base_url or os.environ.get("LLM_BASE_URL", "https://api.deepseek.com/v1")
+        base_url = base_url or _base_url("deepseek")
         self.client = OpenAI(
             api_key=api_key,
             base_url=base_url,

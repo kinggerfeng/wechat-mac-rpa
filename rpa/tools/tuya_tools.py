@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .tool_registry import get_registry
+from rpa.net.endpoints import base_url as _base_url  # noqa: E402  单一出口：rpa/net/endpoints.py
 
 _logger = logging.getLogger("rpa.tools.tuya")
 
@@ -115,7 +116,7 @@ def _get_api():
     config = _load_config()
     access_id = config.get("access_id", "")
     access_secret = config.get("access_secret", "")
-    endpoint = config.get("api_endpoint", "https://openapi.tuyacn.com")
+    endpoint = config.get("api_endpoint", _base_url("tuyacn"))
 
     if not access_id or not access_secret:
         _logger.warning("[Tuya] 缺少 API 凭证")

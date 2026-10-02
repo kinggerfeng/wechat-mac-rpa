@@ -453,6 +453,7 @@ def validate_flow(graph: dict[str, Any], known_types: Iterable[str] | None = Non
 
     issues.extend(_validate_paths(parsed, graph.get("default_path")))
     issues.extend(_validate_branching(parsed, valid_edges))
+    issues.extend(_validate_positions(graph, parsed))
     _validate_variable_ambiguity(graph, list(parsed.values()), issues)
 
     return issues
@@ -475,6 +476,38 @@ UI_BOUND_TYPES = frozenset({
 #: canvas renders ports from the node spec, so a variable number would need a
 #: second mechanism to draw. Unused ports simply have no edge.
 BRANCH_PORTS = ("b1", "b2", "b3", "b4")
+
+
+def _validate_positions(graph: dict[str, Any], nodes: dict[str, Node]) -> list[ValidationIssue]:
+    """Warn about nodes the canvas cannot place.
+
+    A node with no ``position`` parses to ``(0, 0)`` rather than failing, so
+    the graph is valid and the run works — the defect is purely visual, and the
+    worst version of it is *silent*: every such node lands on the origin, on top
+    of each other, indistinguishable and impossible to grab individually. A
+    warning costs nothing and tells the author which nodes to move.
+
+    Checked against the raw graph rather than the parsed nodes because
+    :meth:`Position.from_dict` has already discarded the information by the time
+    a parsed node exists.
+    """
+    raw_nodes = {str(n.get("id") or ""): n for n in (graph.get("nodes") or []) if isinstance(n, dict)}
+    issues: list[ValidationIssue] = []
+    for node_id in nodes:
+        raw = raw_nodes.get(node_id)
+        if raw is None:
+            continue
+        position = raw.get("position")
+        if not isinstance(position, dict) or "x" not in position or "y" not in position:
+            issues.append(
+                ValidationIssue(
+                    "warning",
+                    "node_without_position",
+                    f"节点 {node_id} 缺少 position，画布上会落在原点（与其它节点重叠）",
+                    node_id=node_id,
+                )
+            )
+    return issues
 
 
 def _validate_branching(nodes: dict[str, Node], edges: dict[str, Edge]) -> list[ValidationIssue]:

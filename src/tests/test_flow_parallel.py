@@ -25,7 +25,15 @@ REG = get_node_registry()
 
 
 def _var(node_id, name, value):
-    return {"id": node_id, "type": "set_var", "params": {"name": name, "value": value}}
+    # A position on every node: the validator warns about a missing one because
+    # the canvas cannot place such a node, and a fixture that omits it would be
+    # teaching a graph shape this app does not accept.
+    return {
+        "id": node_id,
+        "type": "set_var",
+        "position": {"x": 40, "y": 40},
+        "params": {"name": name, "value": value},
+    }
 
 
 def _fork_graph(**fork_params):
@@ -34,11 +42,11 @@ def _fork_graph(**fork_params):
         "version": 1,
         "entry": "fork",
         "nodes": [
-            {"id": "fork", "type": "parallel", "params": params},
+            {"id": "fork", "type": "parallel", "position": {"x": 40, "y": 40}, "params": params},
             _var("a1", "a", "A"),
             _var("b1", "b", "B"),
             _var("c1", "c", "C"),
-            {"id": "barrier", "type": "join", "params": {"label": "all"}},
+            {"id": "barrier", "type": "join", "position": {"x": 300, "y": 40}, "params": {"label": "all"}},
             _var("after", "done", "yes"),
         ],
         "edges": [
@@ -130,15 +138,17 @@ class TestFanOutFanIn:
             "version": 1,
             "entry": "outer",
             "nodes": [
-                {"id": "outer", "type": "parallel", "params": {"mode": "sequential"}},
+                {"id": "outer", "type": "parallel", "position": {"x": 40, "y": 40}, "params": {"mode": "sequential"}},
                 {
-                    "id": "inner", "type": "parallel", "params": {"mode": "sequential"},
+                    "id": "inner", "type": "parallel",
+                    "position": {"x": 40, "y": 40},
+                    "params": {"mode": "sequential"},
                 },
                 _var("i1", "i", "I"),
                 _var("i2", "inner_b", "I2"),
-                {"id": "ibar", "type": "join", "params": {}},
+                {"id": "ibar", "type": "join", "position": {"x": 40, "y": 40}, "params": {}},
                 _var("s1", "s", "S"),
-                {"id": "obar", "type": "join", "params": {}},
+                {"id": "obar", "type": "join", "position": {"x": 40, "y": 40}, "params": {}},
                 _var("last", "finished", "yes"),
             ],
             "edges": [
@@ -297,9 +307,9 @@ class TestValidation:
         graph = {
             "version": 1, "entry": "fork",
             "nodes": [
-                {"id": "fork", "type": "parallel", "params": {}},
+                {"id": "fork", "type": "parallel", "position": {"x": 40, "y": 40}, "params": {}},
                 _var("a1", "a", "A"),
-                {"id": "barrier", "type": "join", "params": {}},
+                {"id": "barrier", "type": "join", "position": {"x": 40, "y": 40}, "params": {}},
             ],
             "edges": [
                 {"id": "e1", "source": "fork", "source_port": "b1", "target": "a1"},
@@ -316,7 +326,7 @@ class TestValidation:
     def test_branches_converging_on_different_joins_are_refused(self):
         """Two of the three meet at one barrier, the third at another."""
         graph = _fork_graph()
-        graph["nodes"].append({"id": "other", "type": "join", "params": {}})
+        graph["nodes"].append({"id": "other", "type": "join", "position": {"x": 40, "y": 40}, "params": {}})
         graph["nodes"].append(_var("b2", "b2", "B2"))
         graph["edges"].append(
             {"id": "e8", "source": "b2", "source_port": "ok", "target": "other"})
@@ -329,7 +339,7 @@ class TestValidation:
         """A branch that can arrive at either barrier has no single place to
         wait, so the fork has nothing to join on."""
         graph = _fork_graph()
-        graph["nodes"].append({"id": "other", "type": "join", "params": {}})
+        graph["nodes"].append({"id": "other", "type": "join", "position": {"x": 40, "y": 40}, "params": {}})
         graph["nodes"].append(_var("b2", "b2", "B2"))
         graph["edges"].append(
             {"id": "e8", "source": "b2", "source_port": "ok", "target": "other"})
@@ -346,7 +356,7 @@ class TestValidation:
         and the author believes they wrote a barrier."""
         graph = {
             "version": 1, "entry": "n1",
-            "nodes": [_var("n1", "a", "1"), {"id": "j", "type": "join", "params": {}},
+            "nodes": [_var("n1", "a", "1"), {"id": "j", "type": "join", "position": {"x": 40, "y": 40}, "params": {}},
                       _var("n2", "b", "2")],
             "edges": [
                 {"id": "e1", "source": "n1", "source_port": "ok", "target": "j"},

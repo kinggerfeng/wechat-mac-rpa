@@ -81,9 +81,17 @@ def _check_screen_recording() -> tuple[str, str]:
         return "unavailable", "未安装 pyobjc-framework-Quartz，无法检测屏幕录制权限"
     try:
         # CGPreflightScreenCaptureAccess reports whether a grant exists without
-        # triggering the prompt, which is what a check should do. Note that on
-        # macOS 10.15+ this returns True for a terminal that was granted before,
-        # and only becomes False after the grant is revoked.
+        # triggering the prompt, which is what a check should do.
+        #
+        # It also cannot be read as a verdict on "the app is permitted". Two
+        # measured facts on this machine: a process started from a shell or an
+        # IDE reports the *responsible process* rather than the app the operator
+        # is looking at, so the value can describe something else entirely; and
+        # the entry existing in System Settings only means TCC has seen it once,
+        # while the live call flips to false without the list changing. Both
+        # were confirmed by starting the same code two different ways and getting
+        # different answers, which is why the denial message below names the
+        # bundle to grant rather than describing the symptom.
         granted = bool(Quartz.CGPreflightScreenCaptureAccess())
     except AttributeError:
         # Pre-10.15 fallback: absence of the symbol means the OS always allowed it.
@@ -92,7 +100,11 @@ def _check_screen_recording() -> tuple[str, str]:
         return "unavailable", f"检测失败: {exc}"
     if granted:
         return "granted", "已授权，可截图"
-    return "denied", "未授权：screencapture 只会截到桌面壁纸，感知会静默失效"
+    return "denied", (
+        "未授权：截图只会拿到桌面壁纸，感知会静默失效。"
+        "请在 系统设置 → 隐私与安全性 → 屏幕录制 中给 RPAStudio.app 授权后重启应用；"
+        "给终端或 Python 解释器授权无效。"
+    )
 
 
 def _check_accessibility() -> tuple[str, str]:
@@ -104,7 +116,13 @@ def _check_accessibility() -> tuple[str, str]:
 
             if hasattr(Quartz, "AXIsProcessTrusted"):
                 granted = bool(Quartz.AXIsProcessTrusted())
-                return ("granted", "已授权，可发送点击与按键") if granted else ("denied", "未授权：点击与按键不会生效")
+                if granted:
+                    return "granted", "已授权，可发送点击与按键"
+                return (
+                    "denied",
+                    "未授权：点击与按键不会生效。请在 系统设置 → 隐私与安全性 → 辅助功能 "
+                    "中给 RPAStudio.app 授权后重启应用；给终端或 Python 解释器授权无效。",
+                )
             return "unavailable", "Quartz 未暴露 AXIsProcessTrusted"
         except ImportError:
             return "unavailable", "未安装 pyobjc-framework-ApplicationServices"
@@ -114,7 +132,11 @@ def _check_accessibility() -> tuple[str, str]:
         return "unavailable", f"检测失败: {exc}"
     if granted:
         return "granted", "已授权，可发送点击与按键"
-    return "denied", "未授权：cliclick 点击与按键不会生效"
+    return (
+        "denied",
+        "未授权：cliclick 点击与按键不会生效。请在 系统设置 → 隐私与安全性 → "
+        "辅助功能 中给 RPAStudio.app 授权后重启应用；给终端或 Python 解释器授权无效。",
+    )
 
 
 def _check_automation(deep: bool = False) -> tuple[str, str]:

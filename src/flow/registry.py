@@ -142,11 +142,23 @@ class BaseNode:
         return any(p.name == name and p.raw for p in self.spec.params)
 
     def resolve(self, name: str, default: Any = None) -> Any:
-        """Param value, falling back to the run scope under the same name."""
+        """Param value, falling back to the run scope under the same name.
+
+        The ``default`` used to apply only when there was no context, so a live
+        run returned ``None`` for a name that was simply absent. That is the
+        difference between "there is no error" and "we do not know": the
+        ``catch`` node reached for a missing ``<label>_error``, got ``None``,
+        and reported ``error: 'None'`` — a string that reads like a value. The
+        default is now the answer either way, and a caller that needs to tell
+        "absent" from "None" can pass a sentinel.
+        """
         value = self.param(name, _UNSET)
         if value is not _UNSET:
             return value
-        return self.ctx.scope.get(name) if self.ctx else default
+        if self.ctx is None:
+            return default
+        found = self.ctx.scope.get(name)
+        return default if found is None else found
 
     def target_name(self, default: str = "wechat") -> str:
         """The app this node drives: its own ``target``, else the param, else the default."""

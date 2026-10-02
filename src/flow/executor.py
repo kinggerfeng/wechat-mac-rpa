@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
 from .context import FlowContext, FlowScope, evaluate_condition
+from .control_nodes import Region, compute_regions, region_for
 from .expr import interpolate
 from .registry import BaseNode, NodeRegistry, get_node_registry
 from .schema import (
@@ -153,6 +154,9 @@ class FlowExecutor:
         self._abort = threading.Event()
         self.ctx: FlowContext | None = None
         self._live_nodes: list[BaseNode] = []
+        #: Resolved ``try`` blocks for the current run. Empty when the graph has
+        #: none, which is the common case and costs one dict lookup per failure.
+        self._regions: list[Region] = []
 
     def abort(self) -> None:
         self._abort.set()
@@ -200,6 +204,10 @@ class FlowExecutor:
                 node = Node.from_dict(raw)
                 nodes[node.id] = node
             edges = self._index_edges(graph.get("edges") or [])
+            # Regions are resolved once, not per failure: the graph cannot
+            # change mid-run, and a BFS per error would be work the run only
+            # does when it is already in trouble.
+            self._regions = compute_regions(nodes, edges)
             entry = str(graph.get("entry") or "")
             if entry not in nodes:
                 raise FlowError(f"入口节点 {entry!r} 不存在")
@@ -579,14 +587,81 @@ class FlowExecutor:
         if node.on_error == "ignore":
             self.ctx.scope.bind(f"{node.id}.error", str(exc))
             return self._next(node.id, edges, result)
-        if node.on_error == "branch":
+
+        # A node inside a ``try`` block fails into the region's handler, not
+        # into a dead run. This used to be described as something the validator
+        # rewrote, and no such rewrite existed: a region drawn in the canvas
+        # kept the default ``on_error: fail``, so the body failure ended the
+        # run and the ``catch`` node was never reached. Error handling that
+        # silently does nothing is the worst kind, because the graph reads as
+        # protected.
+        region = region_for(self._regions, node.id)
+        policy = "branch" if (region is not None and node.on_error == "fail") else node.on_error
+
+        if policy == "branch":
+            self._bind_region_error(region, node, exc)
             port = self._resolve_port(node, "error", edges, result, missing_ok=True)
             if port:
                 return port
+            closer = self._region_closer(region)
+            if closer:
+                # ``_next`` returns "" for "the flow ends here", which is a
+                # success. Testing its return value for truthiness is how a
+                # trap whose handler is the last node in the graph turned into
+                # a failed run.
+                return self._next(closer, edges, result)
         result.status = "error"
         result.error = f"节点 {node.id} ({node.type}) 失败: {exc}"
         result.failed_node = node.id
         return _FAIL
+
+    def _bind_region_error(self, region: Region | None, node: Node, exc: Exception) -> None:
+        """Publish a trapped failure so the ``catch`` node can report it.
+
+        Three names rather than one: the message is what a human reads, the node
+        id is what a handler branches on, and the exception class is what tells
+        a retry apart from a give-up without parsing English text.
+
+        The class is taken from the innermost ``__cause__``, because nodes are
+        required to raise :class:`NodeError` and a handler that only ever saw
+        ``NodeError`` would be unable to tell a parse failure from a missing
+        window. Nodes that chain the real exception (``raise ... from``) are
+        what make the distinction possible; the walk stops at the first link so
+        a deliberate chain of three does not report the wrong ancestor.
+
+        ``__last_error__`` is bound even with no region, because a ``catch`` can
+        legitimately be reached over a plain ``error`` edge with no ``try`` in
+        sight. That wiring is what the rethrow test uses, and a handler that
+        says "未知节点失败" for a failure it demonstrably just received is the
+        bug this whole path exists to remove.
+        """
+        assert self.ctx is not None
+        root: BaseException = exc
+        seen: set[int] = set()
+        while isinstance(root.__cause__, BaseException) and id(root.__cause__) not in seen:
+            seen.add(id(root.__cause__))
+            root = root.__cause__
+        message = f"{type(root).__name__}: {root}"
+        scope = self.ctx.scope
+        scope.bind("__last_error__", message)
+        scope.bind("__last_error_node__", node.id)
+        scope.bind("__last_error_type__", type(root).__name__)
+        if region is not None:
+            label = region.label
+            scope.bind(f"{label}_error", message)
+            scope.bind(f"{label}_error_node", node.id)
+            scope.bind(f"{label}_error_type", type(root).__name__)
+
+    @staticmethod
+    def _region_closer(region: Region | None) -> str:
+        """The node a trapped failure enters: ``catch``, else ``finally``.
+
+        A region with neither cannot express "carry on", so the failure stays a
+        failure rather than being swallowed by an absent handler.
+        """
+        if region is None:
+            return ""
+        return region.catch_id or region.finally_id or ""
 
     def _resolve_port(
         self,

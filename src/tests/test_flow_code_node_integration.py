@@ -326,22 +326,11 @@ def test_try_catch_handles_a_failing_snippet():
     assert result.scope.get("survived") is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Pre-existing bug, unrelated to the code node: nothing binds "
-        "`<label>_error`, so CatchNode reads the literal string 'None' and "
-        "reports caught=False for a region that did catch. Reproduced with a "
-        "plain set_var body. strict=True so fixing it turns this red and forces "
-        "the assertion to be updated rather than left lying."
-    ),
-)
 def test_a_snippet_failure_inside_a_catch_region_keeps_the_reason_reachable():
     result = _run(
         [
             _n("a", "try", params={"label": "parse"}),
-            _n("b", "code", on_error="branch", outputs=["ok", "error"],
-               params={"code": "output = 1 / 0"}),
+            _n("b", "code", outputs=["ok", "error"], params={"code": "output = 1 / 0"}),
             _n("c", "catch", params={"label": "parse", "action": "continue"}),
         ],
         [
@@ -351,29 +340,50 @@ def test_a_snippet_failure_inside_a_catch_region_keeps_the_reason_reachable():
         ],
     )
     assert result.status == "ok", result.error
-    assert "ZeroDivisionError" in str(result.scope.get("parse_error", ""))
+    # The body kept the canvas default `on_error: fail`. A region used to be
+    # inert in exactly this configuration: the failure ended the run and `catch`
+    # was never reached, so a graph that reads as protected was not.
+    assert result.scope["c"]["caught"] is True
+    assert result.scope["c"]["error_node"] == "b"
+    # The innermost type, not the NodeError wrapper the node is obliged to raise.
+    assert result.scope["c"]["error_type"] == "ZeroDivisionError"
+    assert "ZeroDivisionError" in result.scope["parse_error"]
 
 
-def test_the_catch_region_defect_is_not_specific_to_the_code_node():
-    # Pins the finding: a body that raises through the graph rather than through
-    # a snippet loses its reason too, so this is the region feature's bug and
-    # not something the sandbox introduced.
+def test_a_region_whose_body_succeeds_reports_that_it_caught_nothing():
+    # The mirror image, and the one that would have been wrong if the binding
+    # were never cleared: a handler that reports `caught` for a body that ran
+    # fine sends the flow down the wrong branch.
     result = _run(
         [
-            _n("a", "try", params={"label": "reg"}),
-            _n("b", "set_var", on_error="branch", outputs=["ok", "error"],
-               params={"name": "boom", "value": 1}),
-            _n("c", "catch", params={"label": "reg", "action": "continue"}),
+            _n("a", "try", params={"label": "parse"}),
+            _n("b", "code", params={"code": "output = 42"}),
+            _n("c", "catch", params={"label": "parse", "action": "continue"}),
         ],
-        [
-            _e("e1", "a", "b", "body"),
-            _e("e2", "b", "c", "ok"),
-            _e("e3", "b", "c", "error"),
-        ],
+        [_e("e1", "a", "b", "body"), _e("e2", "b", "c", "ok")],
     )
-    assert result.status == "ok"
-    assert "reg_error" not in result.scope
-    assert result.scope.get("c", {}).get("error") == "None"
+    assert result.status == "ok", result.error
+    assert result.scope["c"]["caught"] is False
+    assert result.scope["c"]["error"] == ""
+    assert result.scope["parse_error"] == ""
+
+
+def test_a_region_re_entered_through_a_loop_does_not_report_a_stale_failure():
+    # A region inside a loop runs more than once. Without the reset on the way
+    # in, the second pass would find the first pass's failure still bound and
+    # claim it caught something that did not happen.
+    result = _run(
+        [
+            _n("a", "try", params={"label": "each"}),
+            _n("b", "code", outputs=["ok", "error"],
+               params={"code": "output = 1 / 0 if n == 1 else n"}),
+            _n("c", "catch", params={"label": "each", "action": "continue"}),
+        ],
+        [_e("e1", "a", "b", "body"), _e("e2", "b", "c", "ok"), _e("e3", "b", "c", "error")],
+        variables={"n": 1},
+    )
+    assert result.status == "ok", result.error
+    assert result.scope["c"]["caught"] is True
 
 
 # ── the code is not interpolated ────────────────────────────────────────────

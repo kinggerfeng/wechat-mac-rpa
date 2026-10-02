@@ -447,6 +447,7 @@ def run_code(
     value: Any = None
     error = ""
     error_type = ""
+    error_exc: BaseException | None = None
     source_of_value = "none"
 
     try:
@@ -462,13 +463,14 @@ def run_code(
                 value = namespace[OUTPUT_NAME]
                 source_of_value = OUTPUT_NAME
     except CodeTimeout as exc:
-        status, error, error_type = "timeout", str(exc), "CodeTimeout"
+        status, error, error_type, error_exc = "timeout", str(exc), "CodeTimeout", exc
     except PathRefused as exc:
-        status, error, error_type = "refused", str(exc), "PathRefused"
+        status, error, error_type, error_exc = "refused", str(exc), "PathRefused", exc
     except BaseException as exc:  # noqa: BLE001
         # A snippet raising SystemExit must not take the run down with it, and
         # the type is reported so "your code raised ValueError" is visible.
-        status, error, error_type = "error", f"{type(exc).__name__}: {exc}", type(exc).__name__
+        status = "error"
+        error, error_type, error_exc = f"{type(exc).__name__}: {exc}", type(exc).__name__, exc
 
     duration_ms = int((time.monotonic() - started) * 1000)
     return {
@@ -480,6 +482,11 @@ def run_code(
         "stderr": err.getvalue(),
         "error": error,
         "error_type": error_type,
+        # The exception object itself, not just its name. A caller that
+        # re-raises can chain it, and the innermost type is the one worth
+        # branching on — "ZeroDivisionError", not the "NodeError" the wrapper
+        # is obliged to raise.
+        "error_exc": error_exc,
         "duration_ms": duration_ms,
         # Explicit rather than implicit: a truncated log that looks complete is
         # the failure this project keeps paying for.

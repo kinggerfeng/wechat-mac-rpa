@@ -80,6 +80,16 @@ const visibleNav = computed(() => [...engineNav, ...casesNav]);
 const casesStart = engineNav.length;
 const currentTitle = computed(() => (route.meta?.title as string | undefined) ?? "控制台");
 
+/**
+ * Three labels, not two. "未测量" said as "离线" is a false reading, and the
+ * fix is not to keep a boolean and hope the first poll lands before the user
+ * looks — it is to admit the third state.
+ */
+const apiStateLabel = computed(() => {
+  if (engine.online === null) return "正在检测本地服务";
+  return engine.online ? "LOCAL API 已连接" : "LOCAL API 离线";
+});
+
 const missingPermissions = computed(
   () => engine.permissions?.missing.filter((key) => key !== "automation") ?? [],
 );
@@ -138,8 +148,18 @@ onUnmounted(() => engine.stopPolling());
           >
             缺少 {{ missingPermissions.length }} 项权限
           </button>
-          <span class="api-state" :class="{ online: engine.online }">
-            <span />{{ engine.online ? "LOCAL API 已连接" : "LOCAL API 离线" }}
+          <span
+            class="api-state"
+            :class="{ online: engine.online === true, pending: engine.online === null }"
+            :title="
+              engine.online === null
+                ? '正在检测本地服务'
+                : engine.online
+                  ? `最近检查 ${engine.lastUpdated || '—'}`
+                  : engine.lastError || '本地服务无响应'
+            "
+          >
+            <span />{{ apiStateLabel }}
           </span>
           <el-button
             v-if="!route.meta?.hidden"
@@ -147,7 +167,7 @@ onUnmounted(() => engine.stopPolling());
             :plain="engine.running"
             :icon="engine.running ? VideoPause : VideoPlay"
             :loading="engine.busy"
-            :disabled="!engine.online"
+            :disabled="engine.online === false"
             size="small"
             @click="toggleBot"
           >
@@ -363,6 +383,16 @@ onUnmounted(() => engine.stopPolling());
 
 .api-state.online > span {
   background: #52a27c;
+}
+
+/* Unmeasured, not offline: grey rather than the alarm orange, so a page opened
+   straight at a sub-route does not flash a failure that was never reported. */
+.api-state.pending {
+  color: #8a9691;
+}
+
+.api-state.pending > span {
+  background: #bdc7c1;
 }
 
 .global-error {

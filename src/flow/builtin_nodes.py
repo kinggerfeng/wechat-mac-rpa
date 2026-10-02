@@ -2047,27 +2047,43 @@ class CodeNode(BaseNode):
             raise NodeError(f"代码被沙箱拒绝: {exc}") from exc
 
         if not result["ok"]:
-            raise NodeError(self._failure_message(result))
+            raise self._failure(result)
 
         return {**result, "result": result["value"]}
 
     @staticmethod
-    def _failure_message(result: dict[str, Any]) -> str:
+    def _failure(result: dict[str, Any]) -> NodeError:
         """A failure the author can act on.
 
         The captured streams travel with it: a snippet that printed its input
         before raising is the most common way to diagnose one, and dropping that
         output would send the author back to the editor to add a print they
         already wrote.
+
+        ``from result["error_exc"]`` chains the real exception, so anything
+        reading ``__cause__`` — the executor, when it reports which error type
+        a ``catch`` handler received — sees ``ZeroDivisionError`` rather than
+        the ``NodeError`` this wrapper is obliged to raise.
         """
-        parts = [f"{result['status']}: {result['error'] or '未知原因'}"]
+        parts = [result["error"] or "未知原因"]
+        # ``error`` needs no prefix — the exception class already names it, and
+        # repeating it is the "NodeError: error: ZeroDivisionError" pile-up.
+        # ``timeout`` and ``refused`` are different *conditions*, not different
+        # spellings of a failure, and a handler branching on the message needs
+        # to be able to tell them apart.
+        status = str(result.get("status") or "error")
+        if status != "error":
+            parts.insert(0, f"[{status}]")
         for label in ("stdout", "stderr"):
             text = (result.get(label) or "").strip()
             if text:
                 parts.append(f"{label}: {text[:500]}")
         if result.get("truncated"):
             parts.append("输出已截断")
-        return " | ".join(parts)
+        error = NodeError(" | ".join(parts))
+        if isinstance(result.get("error_exc"), BaseException):
+            error.__cause__ = result["error_exc"]
+        return error
 
     def _inputs(self) -> dict[str, Any]:
         """The scope values the snippet sees as bare names.

@@ -231,7 +231,7 @@ onMounted(() => void load());
     </header>
 
     <el-alert
-      v-if="!engine.online"
+      v-if="engine.online === false"
       class="notice"
       type="warning"
       show-icon

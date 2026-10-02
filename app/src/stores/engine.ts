@@ -13,7 +13,16 @@ import type { BotStatus, DashboardSummary, PermissionReport } from "../types";
 const POLL_MS = 3000;
 
 export const useEngineStore = defineStore("engine", () => {
-  const online = ref(false);
+  /**
+   * Tri-state on purpose.
+   *
+   * `null` is "not measured yet", which is a different fact from `false`
+   * ("we asked and it was not there"). Collapsing the two is how a page opened
+   * directly at a sub-route showed "LOCAL API 离线" for the length of one round
+   * trip while the API was answering 200 — the indicator reported a
+   * measurement nobody had made.
+   */
+  const online = ref<boolean | null>(null);
   const status = ref<BotStatus | null>(null);
   const summary = ref<DashboardSummary | null>(null);
   const logs = ref<string[]>([]);
@@ -45,24 +54,32 @@ export const useEngineStore = defineStore("engine", () => {
   async function refresh(): Promise<void> {
     if (inFlight) return;
     inFlight = true;
-    try {
-      const [nextStatus, nextLogs, nextSummary] = await Promise.all([
-        api.status(),
-        api.logs(200),
-        api.summary(),
-      ]);
-      status.value = nextStatus;
-      logs.value = nextLogs.logs;
-      summary.value = nextSummary;
+    // Settled, not all: liveness is decided by /api/status alone. An earlier
+    // version required all three to succeed, so an unreadable bot log or a
+    // cases.db that was not readable made the header declare the whole local
+    // service dead while it was serving. Each panel shows its own failure.
+    const [nextStatus, nextLogs, nextSummary] = await Promise.allSettled([
+      api.status(),
+      api.logs(200),
+      api.summary(),
+    ]);
+
+    if (nextStatus.status === "fulfilled") {
+      status.value = nextStatus.value;
       online.value = true;
       lastError.value = "";
       lastUpdated.value = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-    } catch (error) {
+    } else {
       online.value = false;
-      lastError.value = error instanceof ApiError ? error.message : String(error);
-    } finally {
-      inFlight = false;
+      lastError.value =
+        nextStatus.reason instanceof ApiError
+          ? nextStatus.reason.message
+          : String(nextStatus.reason);
     }
+
+    if (nextLogs.status === "fulfilled") logs.value = nextLogs.value.logs;
+    if (nextSummary.status === "fulfilled") summary.value = nextSummary.value;
+    inFlight = false;
   }
 
   /** Permissions are polled shallow: `deep=true` raises a system consent dialog

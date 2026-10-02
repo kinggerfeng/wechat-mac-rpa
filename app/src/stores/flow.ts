@@ -18,6 +18,7 @@ import type {
   LocatePath,
   NodeCatalogue,
   NodeSpec,
+  Position,
   ValidationIssue,
 } from "../types";
 
@@ -113,16 +114,46 @@ export const useFlowStore = defineStore("flow", () => {
     }
   }
 
+  /**
+   * The single place a graph crossing the API boundary becomes canvas state.
+   *
+   * Nodes are normalised here rather than defended against at the ~8 sites
+   * that read `node.position`. A graph written before `position` was required,
+   * or one arriving from an external caller, has nodes without it — and the
+   * backend accepts such a graph (it defaults the position to the origin). The
+   * first unguarded `node.position.x` then threw during render and took the
+   * whole page to a white screen, which reads as "the app is broken" rather
+   * than "this graph is old".
+   *
+   * Nodes missing a position are laid out on a grid rather than dropped: the
+   * backend put them all at (0,0), so they would otherwise stack invisibly on
+   * top of each other with no way to tell them apart or grab one.
+   */
   function toGraph(graph: FlowGraph): FlowGraph {
+    let placed = 0;
+    const nodes = (graph.nodes ?? []).map((node) => {
+      if (isPosition(node?.position)) return node;
+      placed += 1;
+      return { ...node, position: { x: 40 + (placed % 6) * 230, y: 40 + Math.floor((placed - 1) / 6) * 120 } };
+    });
     return {
       version: 1,
       entry: graph.entry ?? "",
       default_path: graph.default_path ?? null,
       description: graph.description ?? "",
       variables: graph.variables ?? {},
-      nodes: graph.nodes ?? [],
+      nodes,
       edges: graph.edges ?? [],
     };
+  }
+
+  function isPosition(value: unknown): value is Position {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      Number.isFinite((value as Position).x) &&
+      Number.isFinite((value as Position).y)
+    );
   }
 
   // ── mutations ──

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from .registry import BaseNode, NodeRegistry, NodeSpec, ParamSpec
@@ -264,25 +265,111 @@ class JoinNode(BaseNode):
 
 # ─────────────────────────────────────────────────────── error regions ──
 
-class TryNode(BaseNode):
-    """Opens an error region. Body nodes route their failures to ``catch``.
+@dataclass
+class Region:
+    """One ``try`` … ``catch``/``finally`` block, resolved from the graph.
 
-    This node itself does almost nothing: it reports which nodes the validator
-    bound into the region so a trace reader can see the boundary without
-    cross-referencing the graph. The real work happens at validation time, where
-    nodes between ``try`` and ``catch``/``finally`` are given ``on_error: branch``
-    on their ``catch`` port.
+    ``body`` holds the node ids strictly between the two, which is what the
+    executor needs to know a failure is trappable. The ``try``/``catch``/
+    ``finally`` nodes themselves are excluded: a trap that caught the failure of
+    the node implementing the trap is not a trap.
+    """
+    label: str
+    try_id: str
+    catch_id: str | None = None
+    finally_id: str | None = None
+    body: frozenset[str] = frozenset()
+
+
+#: The node types that open and close a region. Kept as data rather than
+#: hard-coded strings at each use site so adding a closer cannot leave one
+#: branch behind.
+REGION_OPEN = "try"
+REGION_CLOSERS = ("catch", "finally")
+
+
+def compute_regions(nodes: dict[str, Any], edges: dict[str, list[Any]]) -> list[Region]:
+    """Resolve every ``try`` block into a :class:`Region`.
+
+    The walk is a plain BFS over the ``body`` port with a visited set, because a
+    region may legitimately contain a loop and the cursor has no notion of
+    "already walked here". Nesting is handled by refusing to descend into a
+    second ``try``: the inner region is discovered by its own BFS, and stopping
+    here keeps the two membership sets from overlapping — an inner node belongs
+    to the inner trap, and an inner failure reported to both would fire two
+    handlers for one error.
+    """
+    regions: list[Region] = []
+    for node_id, node in nodes.items():
+        if getattr(node, "type", "") != REGION_OPEN:
+            continue
+        label = str((getattr(node, "params", None) or {}).get("label", "") or "try")
+        region = Region(label=label, try_id=node_id)
+        seen: set[str] = set()
+        queue = [e.target for e in edges.get(node_id, ()) if e.source_port == "body"]
+        while queue:
+            current = queue.pop()
+            if current in seen or current not in nodes:
+                continue
+            seen.add(current)
+            kind = getattr(nodes[current], "type", "")
+            if kind == REGION_OPEN:
+                # Nested: its own BFS will claim the body. Not descending keeps
+                # a single failure from reaching two catch nodes.
+                continue
+            if kind in REGION_CLOSERS:
+                closer_label = str((nodes[current].params or {}).get("label", "") or "try")
+                if closer_label != label:
+                    # A closer for a different region. Leave it in the walk:
+                    # it is a real node in this region, just not this one's
+                    # terminator.
+                    region.body = region.body | {current}
+                    continue
+                if kind == "catch" and region.catch_id is None:
+                    region.catch_id = current
+                elif kind == "finally" and region.finally_id is None:
+                    region.finally_id = current
+                continue
+            region.body = region.body | {current}
+            queue.extend(e.target for e in edges.get(current, ()))
+        regions.append(region)
+    return regions
+
+
+def region_for(regions: list[Region], node_id: str) -> Region | None:
+    """The innermost region whose body contains ``node_id``."""
+    for region in regions:
+        if node_id in region.body:
+            return region
+    return None
+
+
+class TryNode(BaseNode):
+    """Opens an error region. Body failures route to ``catch``/``finally``.
+
+    The node clears the region's error binding on the way in. That is not
+    bookkeeping for its own sake: a region inside a loop runs more than once,
+    and without the reset the second pass would find the first pass's failure
+    still bound and the ``catch`` node would report ``caught: true`` for a body
+    that this time succeeded. A handler that cannot be trusted about whether it
+    fired is worse than no handler.
     """
 
     def execute(self) -> dict[str, Any]:
+        label = str(self.param("label", "") or "try")
+        scope = self.ctx.scope if self.ctx is not None else None
+        if scope is not None:
+            scope.bind(f"{label}_error", "")
+            scope.bind(f"{label}_error_node", "")
+            scope.bind(f"{label}_error_type", "")
         return {
             # The executor falls through to the default `ok` port when a node
             # does not name one, and this node has no `ok` edge — the body is
             # wired on `body`. Without the explicit port the run would end here.
             "__branch__": "body",
-            "region": str(self.param("label", "") or "try"),
+            "region": label,
             "opened_at": time.time(),
-            "note": "异常捕获由校验器把区域内节点的 on_error 改写为 catch 分支实现",
+            "note": "区域内节点失败时会绑定 <label>_error 并走 catch/finally 端口",
         }
 
 
@@ -290,20 +377,42 @@ class CatchNode(BaseNode):
     """Closes an error region. Receives failures raised inside the region.
 
     Ports: ``exit`` (normal continuation), ``rethrow`` (put the failure back).
-    The caught error is bound to ``<label>_error`` so the rest of the flow can
-    inspect it, which is the point of catching rather than merely continuing.
+
+    The caught error arrives bound to ``<label>_error`` by the executor, which
+    is the whole point of catching: a handler that continues without telling
+    the flow *what* went wrong leaves the next node guessing.
     """
 
     def execute(self) -> dict[str, Any]:
         label = str(self.param("label", "") or "try")
-        error = self.resolve(f"{label}_error", "") or self.resolve("__last_error__", "")
+        # The region binding is preferred, but a ``catch`` can also be reached
+        # over a plain ``error`` edge with no ``try`` in sight. Falling back to
+        # the executor's last-error record is what keeps that wiring from
+        # reporting "no error" for a failure it demonstrably just received.
+        error = str(self.resolve(f"{label}_error", "") or self.resolve("__last_error__", ""))
+        failed_node = str(
+            self.resolve(f"{label}_error_node", "")
+            or self.resolve("__last_error_node__", "")
+            or ""
+        )
+        error_type = str(
+            self.resolve(f"{label}_error_type", "")
+            or self.resolve("__last_error_type__", "")
+            or ""
+        )
         action = str(self.param("action", "continue") or "continue")
         if action == "rethrow":
-            raise NodeError(f"捕获到异常并重新抛出: {error}")
+            where = f"节点 {failed_node} 失败" if failed_node else "未记录来源节点"
+            if error_type:
+                where = f"{where}（{error_type}）"
+            detail = f"捕获到异常并重新抛出: {where}"
+            raise NodeError(f"{detail}: {error}" if error else detail)
         return {
             "__branch__": "exit",
             "caught": bool(error),
             "error": str(error),
+            "error_type": str(error_type),
+            "error_node": str(failed_node),
             "label": label,
         }
 

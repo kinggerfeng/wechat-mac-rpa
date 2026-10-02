@@ -267,6 +267,17 @@ async def lifespan(_: FastAPI):
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+_INCLUDE_INTERNAL = os.environ.get("RPA_DESKTOP_INTERNAL", "1") != "0"
+INCLUDE_INTERNAL_SURFACE = _INCLUDE_INTERNAL
+
+if INCLUDE_INTERNAL_SURFACE:
+    from .cases_api import router as _cases_router
+else:  # pragma: no cover - the shipped build never takes this branch
+    _cases_router = None
+
+from .rpa_api import router as _rpa_router  # noqa: E402
+from .record_api import router as _record_router  # noqa: E402
+
 app = FastAPI(title="WeChat Mac RPA Desktop API", lifespan=lifespan)
 _DEV_ORIGINS = [
     # Tauri shell
@@ -293,16 +304,19 @@ app.add_middleware(
 )
 
 
-from .rpa_api import router as rpa_router  # noqa: E402
-from .cases_api import router as cases_router  # noqa: E402
-from .record_api import router as record_router  # noqa: E402
-
-app.include_router(rpa_router)
+# The shipped and internal surfaces are mounted separately so that a packaged
+# build is a decision rather than an accident. `include_internal=False` is what
+# a customer build passes; the default keeps the development experience — every
+# page, every tool — without anyone having to opt in.
+#
 # cases.db belongs to the cases router and nothing else: the flow engine has its
 # own rpa.db, and a query that reaches across the two from a flow node is the
 # coupling this split exists to prevent.
-app.include_router(cases_router)
-app.include_router(record_router)
+app.include_router(_rpa_router)
+app.include_router(_record_router)
+
+if INCLUDE_INTERNAL_SURFACE:
+    app.include_router(_cases_router)
 
 
 @app.get("/api/health")

@@ -26,7 +26,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 from rpa.flow.registry import get_node_registry
 from rpa.flow.scheduler import CronError, CronSchedule, get_scheduler
 from rpa.flow.schema import PATH_CHOICES, Flow, FlowError, new_id, validate_flow
-from rpa.flow.store import get_store
+from rpa.flow.store import _registry_specs, get_store
+from rpa.flow.version import ENGINE_VERSION
+from rpa.flow.version import check as check_engine_compat
+from rpa.flow.version import node_fingerprint
 from rpa.flow.strategy import get_target_registry
 
 router = APIRouter(prefix="/api", tags=["flow"])
@@ -104,9 +107,23 @@ def upsert_target(payload: dict[str, Any]) -> dict[str, Any]:
 def list_flows() -> dict[str, Any]:
     manager = _manager()
     rows = get_store().list_flows()
+    fingerprint = node_fingerprint(_registry_specs())
     for row in rows:
         row["running"] = manager.is_running(row["id"])
-    return {"flows": rows}
+        # Reported, never enforced. A node's parameters or the registry having
+        # changed since a flow was written is the failure that otherwise shows
+        # up weeks later as unexplained behaviour, with nothing to compare
+        # against. Surfacing it in the list is the whole point.
+        # Read from the columns, not from the graph: the list deliberately does
+        # not carry every flow's graph, and loading them all to answer "which
+        # of these are stale?" would be the expensive way to ask.
+        status, detail = check_engine_compat(
+            {"engine_version": row.get("engine_version"),
+             "node_fingerprint": row.get("node_fingerprint")},
+            fingerprint,
+        )
+        row["engine_compat"] = {"status": status, "detail": detail}
+    return {"flows": rows, "engine_version": ENGINE_VERSION}
 
 
 @router.post("/flows")

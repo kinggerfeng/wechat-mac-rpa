@@ -242,7 +242,7 @@ def commit_draft(
     notes: Optional[str] = None,
 ):
     """入库：追加到 benchmark 文件，移入 committed/"""
-    return {"success": true, "benchmark_file": "src/tests/test_tool_decision_benchmark.py"}
+    return {"success": true, "benchmark_file": "rpa/tests/test_tool_decision_benchmark.py"}
 
 @app.post("/draft/{draft_id}/dismiss")
 def dismiss_draft(draft_id: str, reason: str):
@@ -282,7 +282,7 @@ def dismiss_draft(draft_id: str, reason: str):
 
 ### 9.1 P0 Tool 决策
 
-新增 case 追加到 `src/tests/test_tool_decision_benchmark.py` 的 `BENCHMARK_CASES` 列表末尾。
+新增 case 追加到 `rpa/tests/test_tool_decision_benchmark.py` 的 `BENCHMARK_CASES` 列表末尾。
 
 自动生成规则：
 - `badcase_type=missing_tool_call` → `should_call_memory=False`，同时在注释中标注"应调用 get_weather"
@@ -290,7 +290,7 @@ def dismiss_draft(draft_id: str, reason: str):
 
 ### 9.2 P2 回复质量
 
-追加到 `src/tests/test_reply_quality_benchmark.py`。
+追加到 `rpa/tests/test_reply_quality_benchmark.py`。
 
 自动生成规则：
 - 根据 conversation 构建 `all_messages` 和 `unreplied`
@@ -311,7 +311,7 @@ auto_correction_not_persistent_512
 
 ```
 wechat-mac-rpa/
-├── src/
+├── rpa/
 │   └── badcase/
 │       ├── __init__.py
 │       ├── judge_worker.py         # 异步 LLM Judge + 自动入库
@@ -324,7 +324,7 @@ wechat-mac-rpa/
 │       ├── pending/                # 待审核
 │       ├── committed/              # 已入库
 │       └── dismissed/              # 已丢弃
-├── src/tests/fixtures/
+├── rpa/tests/fixtures/
 │   └── auto_cases/                 # 自动入库的 LLM 响应缓存
 └── docs/05-specs/
     └── badcase-to-benchmark-spec.md # 本文件
@@ -409,7 +409,7 @@ from fastapi.responses import HTMLResponse
 app = FastAPI(title="Badcase Review")
 
 # 前端静态文件
-app.mount("/static", StaticFiles(directory="src/badcase/static"), name="static")
+app.mount("/static", StaticFiles(directory="rpa/badcase/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -445,11 +445,11 @@ open http://localhost:8765
 
 ```bash
 # 自动入库时触发
-pytest src/tests/test_tool_decision_benchmark.py -v -k "auto_missing_tool_call_8877"
+pytest rpa/tests/test_tool_decision_benchmark.py -v -k "auto_missing_tool_call_8877"
 # 预期：FAIL（因为 badcase 还没修）
 
 # 系统性修复后再次运行
-pytest src/tests/test_tool_decision_benchmark.py -v
+pytest rpa/tests/test_tool_decision_benchmark.py -v
 # 预期：PASS（修复成功且无 regression）
 ```
 

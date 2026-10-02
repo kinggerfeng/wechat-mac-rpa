@@ -26,7 +26,7 @@ const FILTERS = ["all", "disagree", "unlabelled"] as const;
 type GtFilter = (typeof FILTERS)[number];
 
 /** The human-labelling vocabulary, lifted from the legacy dropdown in
- *  `scripts/admin.py`. The judge's vocabulary is a different, larger set — a
+ *  `tools/server/admin.py`. The judge's vocabulary is a different, larger set — a
  *  human label carrying one of those falls through to the raw string rather
  *  than to a blank cell. */
 const HUMAN_TYPE_LABEL: Record<string, string | undefined> = {

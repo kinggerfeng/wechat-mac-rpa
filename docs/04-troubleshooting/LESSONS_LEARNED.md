@@ -198,17 +198,17 @@ def _is_echo(self, identity, sent):
 ### 启动自动模式
 ```bash
 cd ~/wechat-mac-rpa
-python3 -m src.bot.wechat_bot
+python3 -m rpa.bot.wechat_bot
 ```
 
 ### 关键文件
 | 文件 | 说明 |
 |------|------|
-| `src/bot/wechat_bot.py` | L5 主循环编排（唯一入口） |
-| `src/perception/smart_pipeline.py` | L3.5 智能感知管道（主力：本地预判 + qwen3.6-flash API 兜底） |
-| `src/perception/vision_pipeline.py` | L3.5 纯本地 OCR 管道（备用回退） |
-| `src/layout/layout_parser.py` + `src/message/extractor.py` | L3 布局解析与消息提取 |
-| `src/reply/policy.py` + `src/reply/generator.py` | L4 回复策略与生成 |
+| `rpa/bot/wechat_bot.py` | L5 主循环编排（唯一入口） |
+| `rpa/perception/smart_pipeline.py` | L3.5 智能感知管道（主力：本地预判 + qwen3.6-flash API 兜底） |
+| `rpa/perception/vision_pipeline.py` | L3.5 纯本地 OCR 管道（备用回退） |
+| `rpa/layout/layout_parser.py` + `rpa/message/extractor.py` | L3 布局解析与消息提取 |
+| `rpa/reply/policy.py` + `rpa/reply/generator.py` | L4 回复策略与生成 |
 | `tests/` 目录 | 各模块独立测试 |
 | `docs/02-architecture/ARCHITECTURE.md` | 架构设计文档 |
 
@@ -239,7 +239,7 @@ subprocess.run(['pbcopy'], input=text.encode('utf-8'), timeout=2)
 
 **本次建立的 benchmark**:
 ```
-src/tests/fixtures/unread_badge/
+rpa/tests/fixtures/unread_badge/
   case_001_tencent_news_tp/    # 服务号，有未读（true positive）
   case_003_example_group_fp/  # 群聊拼贴头像，无未读（false positive）
   ...
@@ -277,10 +277,10 @@ src/tests/fixtures/unread_badge/
 **本次代码**:
 ```bash
 # 真实 API（约 1-2 分钟，消耗额度）
-python3 src/tests/test_chat_list_unread_benchmark.py --run-api
+python3 rpa/tests/test_chat_list_unread_benchmark.py --run-api
 
 # 缓存回归（秒级）
-python3 -m pytest src/tests/test_chat_list_unread_benchmark.py -v
+python3 -m pytest rpa/tests/test_chat_list_unread_benchmark.py -v
 ```
 
 ### 7.5 不要擅自添加未经用户确认的内容

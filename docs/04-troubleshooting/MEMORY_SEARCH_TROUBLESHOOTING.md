@@ -203,7 +203,7 @@ grep -n "同事" data/memory/wiki/users/示例用户甲.md
 ### 3.1 验证 keywords 扩展
 
 ```python
-from src.memory.engine import MemoryEngine
+from rpa.memory.engine import MemoryEngine
 engine = MemoryEngine()
 
 keyword = "示例用户甲 同事"
@@ -260,7 +260,7 @@ for s in snippets:
 如果速查表未匹配，运行以下脚本提取 search 的全部中间状态：
 
 ```python
-from src.memory.engine import MemoryEngine
+from rpa.memory.engine import MemoryEngine
 from pathlib import Path
 import math
 

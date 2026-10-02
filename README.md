@@ -39,10 +39,10 @@
   - 手动重启：`launchctl kickstart -k gui/$(id -u)/com.wechat-mac-rpa.admin`
   - 停止服务：`launchctl bootout gui/$(id -u)/com.wechat-mac-rpa.admin`
   - 日志：`tail -f logs/admin-launchd.log logs/admin.log`
-  - 前台调试用：`python3 scripts/admin.py`
-- **测试**：开发环境先执行 `pip install -r requirements-dev.txt`，再运行 `python3 -m pytest src/tests -v`
-- **OCR Benchmark**：`python3 scripts/benchmark_qwen_vl_ocr.py`
-- **生成报告**：`python3 scripts/generate_ocr_benchmark_report.py`
+  - 前台调试用：`python3 tools/server/admin.py`
+- **测试**：开发环境先执行 `pip install -r requirements-dev.txt`，再运行 `python3 -m pytest rpa/tests -v`
+- **OCR Benchmark**：`python3 tools/bench/benchmark_qwen_vl_ocr.py`
+- **生成报告**：`python3 tools/bench/generate_ocr_benchmark_report.py`
 
 详细安装与配置指南见 `docs/01-quickstart/AI_QUICKSTART.md`。
 
@@ -197,12 +197,12 @@ Prompt = 工作记忆（最近对话原文） + 会话记忆（人物 / 关系 /
 
 ```bash
 # 首次全量构建（约 1 小时）
-python3 scripts/update_history_index.py
+python3 tools/data/update_history_index.py
 
 # 后续单条增量（管理工具）
-python3 scripts/update_history_index.py \
+python3 tools/data/update_history_index.py \
   --add-one '{"id":"...","text":"...","sender":"...","chat_type":"single"}'
-python3 scripts/update_history_index.py --remove-one "MSG_ID"
+python3 tools/data/update_history_index.py --remove-one "MSG_ID"
 ```
 
 - 编码器使用 **ONNX Runtime**，无需 `torch` / `transformers`。
@@ -349,7 +349,7 @@ Judge 一旦可信，回路二就可以大规模自动化运转，**人工不再
 ## 工程基础设施
 
 - **Benchmark Dashboard**：自动生成可视化报告，汇总各 benchmark 的历史趋势与当前状态
-- **管理后台**：内置 FastAPI 开发者后台（`scripts/admin.py`），提供 Dashboard、Tick 查看、人工标注、截图 OCR、Benchmark 报告、实验管理
+- **管理后台**：内置 FastAPI 开发者后台（`tools/server/admin.py`），提供 Dashboard、Tick 查看、人工标注、截图 OCR、Benchmark 报告、实验管理
 - **全链路 Profile**：整个链路植入统一的性能打点，覆盖截图、OCR、布局、生成、记忆、发送各阶段
 
 ---
@@ -373,7 +373,7 @@ Judge 一旦可信，回路二就可以大规模自动化运转，**人工不再
 
 ```
 wechat-mac-rpa/
-├── src/
+├── rpa/
 │   ├── bot/               # L5: 主循环编排
 │   ├── perception/        # L3.5: SmartPipeline / VisionPipeline / WeFlowPipeline
 │   ├── layout/            # L3: 布局解析
@@ -391,10 +391,17 @@ wechat-mac-rpa/
 │   ├── logging/           # 结构化日志与全链路追踪
 │   ├── utils/             # L1-L5 共享工具
 │   ├── badcase/           # Badcase 闭环（数据库 / 生成器 / Judge / 审核）
-│   └── tests/             # 9 个 benchmark 套件 + 单元测试
-├── tests_integration/     # 集成测试（真实截图 + 端到端）
-├── scripts/               # 后台 / Dashboard 生成 / 实验框架 / 数据迁移
-│   └── db/                # 数据库迁移、备份、去重脚本
+│   └── flow/              # RPA 编排引擎（节点注册表 / 执行器 / 双路径定位）
+├── tests/                 # 测试统一入口（testpaths，CI 跑这一层）
+│   ├── e2e/               # 需真机的端到端 / 回归套件（CI 只做 collect）
+│   └── fixtures/          # 测试固件
+├── tools/                 # 一次性脚本，按域分目录
+│   ├── bench/             # Benchmark 采集 / 报告 / A-B 实验（legacy/ 为归档）
+│   ├── data/              # 数据导入 / 迁移 / 备份 / 去重
+│   ├── persona/           # 人设 few-shot 样本构建与评估
+│   ├── wiki/              # Wiki 生成 / 校验 / 矛盾检测 / 清洗
+│   ├── ops/               # 环境安装 / 权限 / 隐私门禁 / 文档检查
+│   └── server/            # 服务入口（admin 为待退役的旧后台）
 ├── docs/                  # 完整文档体系
 │   ├── 01-quickstart/
 │   ├── 02-architecture/
@@ -461,10 +468,10 @@ erDiagram
 - 完整系统数据模型（含 `persons`、`aliases`、`facts`、`wiki` 等未来 Phase）见 [`docs/02-architecture/DATA_MODEL_SPEC.md`](docs/02-architecture/DATA_MODEL_SPEC.md)。
 - Phase 1 MVP 详细设计见 [`docs/02-architecture/DATA_MODEL_PHASE1.md`](docs/02-architecture/DATA_MODEL_PHASE1.md)。
 - 常用 DB 维护脚本：
-  - `python scripts/db/migrate_exports_to_db.py`：批量导入导出文件到 DB
-  - `python scripts/db/deduplicate_db.py`：按复合键去重
-  - `python scripts/db/migrate_content_hash.py`：content_hash 算法迁移
-  - `python scripts/db/backup_chat_db.py --retention 7`：自动备份与清理
+  - `python tools/data/migrate_exports_to_db.py`：批量导入导出文件到 DB
+  - `python tools/data/deduplicate_db.py`：按复合键去重
+  - `python tools/data/migrate_content_hash.py`：content_hash 算法迁移
+  - `python tools/data/backup_chat_db.py --retention 7`：自动备份与清理
 
 ---
 
@@ -485,6 +492,7 @@ erDiagram
 
 | 文档 | 说明 |
 |------|------|
+| [架构总览](ARCHITECTURE.md) | 5 分钟地图：目录、数据归属、必须守住的不变量 |
 | [快速开始](docs/01-quickstart/AI_QUICKSTART.md) | 环境配置、依赖安装、首次启动 |
 | [架构设计](docs/02-architecture/ARCHITECTURE.md) | L1-L5 分层架构、依赖规则、边界约束 |
 | [数据模型 Phase 1](docs/02-architecture/DATA_MODEL_PHASE1.md) | SQLite DB-only 架构：chatrooms / messages / chat_members |

@@ -30,7 +30,7 @@
 
 ```
 wechat-mac-rpa/
-├── src/                          # 现有 RPA 层（不改）
+├── rpa/                          # 现有 RPA 层（不改）
 │   ├── bot/wechat_bot.py
 │   ├── perception/
 │   ├── action/
@@ -122,7 +122,7 @@ Path("/Users/yourname/wechat-mac-rpa/.env")
 
 # MemoryEngine 导入修复
 from memory.engine import MemoryEngine
-→ from src.memory.engine import MemoryEngine
+→ from rpa.memory.engine import MemoryEngine
 ```
 
 **保持不变**:
@@ -134,7 +134,7 @@ from memory.engine import MemoryEngine
 
 ---
 
-### 3.3 src/reply/dt_generator.py — 数字人 ReplyGenerator（新建）
+### 3.3 rpa/reply/dt_generator.py — 数字人 ReplyGenerator（新建）
 
 **定位**: 替代现有 `ReplyGenerator.generate()`，加入检索增强
 
@@ -211,7 +211,7 @@ def _parse_replies(self, text):
 
 ---
 
-### 3.6 src/badcase/judge_worker.py — Judge 维度合并
+### 3.6 rpa/badcase/judge_worker.py — Judge 维度合并
 
 **变更**: 新增 2 个维度（DT 标准），现有 7 个维度保留
 
@@ -247,7 +247,7 @@ def _parse_replies(self, text):
 
 ---
 
-### 3.7 src/badcase/case_db.py — 新表
+### 3.7 rpa/badcase/case_db.py — 新表
 
 ```sql
 -- 对抗测试 case（来自 DT）
@@ -268,7 +268,7 @@ CREATE TABLE benchmark_adversarial_cases (
 
 ---
 
-### 3.8 src/tests/test_adversarial_benchmark.py — 新建 P6
+### 3.8 rpa/tests/test_adversarial_benchmark.py — 新建 P6
 
 **case 来源**: `benchmark_adversarial_cases` 表
 

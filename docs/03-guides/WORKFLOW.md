@@ -17,7 +17,7 @@
 | 入口 | `run_bot.py` | 生产环境入口 |
 | 配置 | `.env`、`.env.example`、`.gitignore` | 环境配置 |
 | 文档 | `README.md`、`AGENTS.md` | 项目说明 |
-| 代码 | `src/`、`scripts/`、`skills/` | 源代码 |
+| 代码 | `rpa/`、`python/`、`tools/` | 源代码 |
 | 测试 | `tests_integration/` | 集成测试与回归测试 |
 | 文档 | `docs/` | 文档体系 |
 | 数据 | `data/` | 运行时数据（已被 gitignore） |
@@ -29,12 +29,12 @@
 
 | 文件类型 | 生成来源 | 正确位置 |
 |---------|---------|---------|
-| Benchmark 报告（HTML） | `scripts/generate_benchmark_dashboard.py` | `data/reports/` |
-| 趋势报告（HTML） | `scripts/monitor_benchmark.py` | `data/reports/` |
+| Benchmark 报告（HTML） | `tools/bench/generate_benchmark_dashboard.py` | `data/reports/` |
+| 趋势报告（HTML） | `tools/bench/monitor_benchmark.py` | `data/reports/` |
 | 运行日志 | `bot_logger` | `data/logs/` |
 | Tick 调试 JSON | `debug_logger` | `data/debug/` |
 | 截图 | `window_capture` | `data/screenshots/` |
-| 后台运行时输出 | `admin.py` | `*.out`（已被 gitignore） |
+| 后台运行时输出 | `tools/server/admin.py`（待退役） | `*.out`（已被 gitignore） |
 
 ### 清理检查清单
 
@@ -80,7 +80,7 @@
     │
     ▼
 6. 全量 benchmark 回归
-    - python3 -m pytest src/tests/test_xxx_benchmark.py -v
+    - python3 -m pytest rpa/tests/test_xxx_benchmark.py -v
     - 全部通过才能继续
     │
     ▼
@@ -145,14 +145,14 @@
     │
     ▼
 3. 小样本验证（强制步骤，禁止跳过）
-    - python3 scripts/run_experiment.py --exp <name> --n-samples 1
+    - python3 tools/bench/run_experiment.py --exp <name> --n-samples 1
     - 检查 Judge 是否成功：查看输出是否正常评分（非"空返回"/"JSON 解析失败"）
     - 结果异常（如 0 分、空返回、或明显不合理评分）→ 先排查 Judge 稳定性，**严禁直接全量**
     - 失败原因排查：检查 prompt 长度、API 端点、模型选择
     │
     ▼
 4. 全量运行
-    - 基线采集：python3 scripts/run_experiment.py --exp <name> --n-samples <N>
+    - 基线采集：python3 tools/bench/run_experiment.py --exp <name> --n-samples <N>
       - 对照组 = CONTROL（当前生产配置），重新生成回复
     - 实验组运行：同上脚本同时完成实验组
     - Judge 失败时自动重试 3 次（judge_worker.py 内置）
@@ -172,7 +172,7 @@
     │
     ▼
 7. Dashboard 查看
-    - 打开 admin.py 的实验管理页
+    - 打开实验管理页（Vue 页面，数据来自 `/api/cases/experiments`）
     - 可视化对比两组结果
     - 检查 diff 表头是否正确（"线上配置(CONTROL)" vs "实验组"）
     │
@@ -214,30 +214,36 @@
 
 ## 6. 前端修改后强制验证
 
-**任何修改前端相关代码（admin.py、HTML 模板、CSS、JS、路径配置）后，必须全量验证所有 admin 页面，禁止只看代码就声称完成。**
+**任何修改前端相关代码（Vue 页面、桌面 API、前端路由、路径配置）后，必须全量验证所有页面，禁止只看代码就声称完成。**
+
+> **本节原描述的是 `tools/server/admin.py` 的 8 个服务端渲染页面。**
+> 桌面端已改为 Tauri + Vue 3（`app/`），cases 域路由迁至 `rpa/backend/cases_api.py`，
+> `admin.py` 进入待退役状态。下面保留其页面清单作为**路由对照**，因为
+> `/api/cases/*` 的每个端点仍对应一个 Vue 页面，改后端时需要确认对应页面。
 
 ### 验证范围
 
-必须检查 admin.py 的全部 8 个页面：
-- `/` Dashboard
-- `/ticks` Tick 查看
-- `/gt` GT 标注
-- `/review` 人工审核
-- `/screenshots` 截图 OCR
-- `/benchmark/judge` Judge 质量
-- `/benchmark/reply` 回复质量
-- `/experiments` 实验管理
+必须覆盖以下能力面（页面路径以 `app/src/pages/` 为准）：
+- Dashboard 概览（`/api/dashboard/summary`）
+- Tick 查看与 GT 标注（`/api/cases/ticks`、`/api/cases/ticks/{id}/gt`）
+- 人工审核（`/api/cases/reviews`）
+- 截图 OCR（`/api/cases/screenshots`）
+- Benchmark（`/api/cases/benchmarks`）
+- 实验管理（`/api/cases/experiments`）
+- 代码审计（`/api/cases/code-audit`）
+- Wiki 审核（`/api/cases/wiki-review`）
 
 ### 验证清单
 
 1. **所有页面 HTTP 200**，不是空白页/500 错误
-2. **Admin 侧边栏是否保留**（不能把独立 HTML 直接返回，必须嵌入 `_page()` 框架）
-3. **页面不出现原始 JSON/代码**（检查 `.inner_text()` 不包含 `[{`、`is_badcase` 等字段名）
-4. 所有链接、按钮是否可点击且有响应
-5. 数据是否正确展示（不是空白/报错），关键指标数字 > 0
-6. 分页、筛选、跳转等交互是否生效
-7. 图片/截图是否能正常加载
-8. **表格、卡片、指标区布局是否整齐**（`page.locator('.card').count()` > 0）
+2. 页面不出现原始 JSON/代码（`inner_text()` 不应包含 `[{`、`is_badcase` 等字段名）
+3. 所有链接、按钮是否可点击且有响应
+4. 数据是否正确展示（不是空白/报错），关键指标数字 > 0
+5. 分页、筛选、跳转等交互是否生效
+6. 图片/截图是否能正常加载
+7. **表格、卡片、指标区布局是否整齐**（`page.locator('.card').count()` > 0）
+8. **后端降级时前端可见**：`degraded: true` 必须在 UI 上有提示，
+   不能让「库读不出来」和「库里没数据」长得一样
 
 ### Playwright 验证脚本
 

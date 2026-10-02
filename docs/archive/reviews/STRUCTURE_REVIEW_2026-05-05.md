@@ -35,7 +35,7 @@
 
 ### CRIT-1: God Method 模式 — tick() 违反单一职责原则
 
-**文件**: `src/bot/wechat_bot.py:101-363`
+**文件**: `rpa/bot/wechat_bot.py:101-363`
 **代码规模**: 262 行，39 个控制块（if/for/try/while）
 **影响**: 🔴 **极高**
 
@@ -109,7 +109,7 @@ def tick(self) -> None:
 
 ### CRIT-2: God Method 模式 — generate() 混合了 6 种不同职责
 
-**文件**: `src/reply/generator.py:62-380`
+**文件**: `rpa/reply/generator.py:62-380`
 **代码规模**: 317 行，27 个控制块
 **影响**: 🔴 **极高**
 
@@ -200,8 +200,8 @@ tick():
 
 ### CRIT-4: 架构分层侵越 — L1 Capture 依赖 L6 Action
 
-**文件**: `src/capture/window_capture.py`
-**代码**: `from src.action.chat_list_clicker import ChatListClicker`
+**文件**: `rpa/capture/window_capture.py`
+**代码**: `from rpa.action.chat_list_clicker import ChatListClicker`
 **影响**: 🟠 **高**
 
 **问题描述**:
@@ -225,7 +225,7 @@ WindowCapture（L1 感知层）直接导入了 ChatListClicker（L6 动作层）
 
 ### CRIT-5: merge_tick 滑动匹配算法 — O(N*M) 复杂度
 
-**文件**: `src/session/global_store.py:247-270`
+**文件**: `rpa/session/global_store.py:247-270`
 **影响**: 🟠 **高**
 
 **问题描述**:
@@ -265,7 +265,7 @@ for i in range(len(history_window)):          # O(M), M=history 长度
 
 ### CRIT-6: 图片去重 Jaccard 阈值 0.001 — 几乎等于无去重
 
-**文件**: `src/session/global_store.py:174`
+**文件**: `rpa/session/global_store.py:174`
 **代码**: `return sim >= 0.001`
 **影响**: 🟠 **中-高**
 
@@ -293,7 +293,7 @@ for i in range(len(history_window)):          # O(M), M=history 长度
 
 ### HIGH-1: generate() 中 no_reply_chats 检查在 LLM 调用之后
 
-**文件**: `src/bot/wechat_bot.py:306-317`
+**文件**: `rpa/bot/wechat_bot.py:306-317`
 **代码**:
 ```python
 replies = self.generator.generate(to_reply, all_messages)   # LLM 调用（消耗 token）
@@ -312,7 +312,7 @@ if chat_name in self.no_reply_chats:                        # 检查免回复列
 
 ### HIGH-2: 双 LLM 路由机制依赖非结构化字符串匹配
 
-**文件**: `src/reply/generator.py:293`
+**文件**: `rpa/reply/generator.py:293`
 **代码**: `if text and '"use_hermes"' in text:`
 
 **逻辑问题**:
@@ -329,7 +329,7 @@ if chat_name in self.no_reply_chats:                        # 检查免回复列
 
 ### HIGH-3: SmartPipeline 像素差异判断硬编码且不合理
 
-**文件**: `src/perception/smart_pipeline.py`
+**文件**: `rpa/perception/smart_pipeline.py`
 **代码**: `diff_mask = np.any(diff > 10, axis=2)`
 
 **结构性问题**:
@@ -386,7 +386,7 @@ if chat_name in self.no_reply_chats:                        # 检查免回复列
 
 ### HIGH-6: 工具调用循环的无限递归风险
 
-**文件**: `src/reply/generator.py:157-272`
+**文件**: `rpa/reply/generator.py:157-272`
 **代码**:
 ```python
 while True:
@@ -407,7 +407,7 @@ while True:
 
 ### HIGH-7: tick() 中 try/except 包裹整个方法体
 
-**文件**: `src/bot/wechat_bot.py:111-354`
+**文件**: `rpa/bot/wechat_bot.py:111-354`
 **代码**:
 ```python
 try:
@@ -426,7 +426,7 @@ except Exception as exc:
 
 ### HIGH-8: 全局状态持久化没有版本控制
 
-**文件**: `src/session/global_store.py`
+**文件**: `rpa/session/global_store.py`
 
 **逻辑问题**:
 1. `global_state.json` 没有版本字段
@@ -453,51 +453,51 @@ except Exception as exc:
 
 ### MED-2: _parse_replies 使用脆弱的字符串解析
 
-**文件**: `src/reply/generator.py`
+**文件**: `rpa/reply/generator.py`
 
 **逻辑问题**: 从 LLM 输出中解析回复列表时，使用正则表达式或字符串分割，容易因格式变化而失败。
 
 ### MED-3: SessionMemory 的 TTL 机制没有清理线程
 
-**文件**: `src/reply/session_memory.py`
+**文件**: `rpa/reply/session_memory.py`
 
 **逻辑问题**: TTL 值定义了但没有后台清理线程，过期数据一直占用内存直到被覆盖。
 
 ### MED-4: BotLogger 日志文件无限增长
 
-**文件**: `src/logging/bot_logger.py`
+**文件**: `rpa/logging/bot_logger.py`
 
 **逻辑问题**: execution.jsonl 和 runtime.log 没有轮转机制，长期运行会占满磁盘。
 
 ### MED-5: 聊天切换防抖时间硬编码
 
-**文件**: `src/bot/wechat_bot.py:96`
+**文件**: `rpa/bot/wechat_bot.py:96`
 **代码**: `self._switch_debounce_seconds: float = 10.0`
 
 **逻辑问题**: 10 秒的防抖时间是硬编码的，没有考虑不同场景（紧急消息 vs 普通消息）。
 
 ### MED-6: 截图保存路径包含 tick_id 但无清理机制
 
-**文件**: `src/bot/wechat_bot.py:143-153`
+**文件**: `rpa/bot/wechat_bot.py:143-153`
 
 **逻辑问题**: 每张截图都保存到磁盘，但没有清理旧截图的机制。
 
 ### MED-7: _normalize_chat_name 在 tick() 中硬编码
 
-**文件**: `src/bot/wechat_bot.py:33-47`
+**文件**: `rpa/bot/wechat_bot.py:33-47`
 
 **结构性问题**: 聊天名称归一化逻辑是模块级函数，但只被 tick() 使用，应该属于 GlobalStore 或专门的 NameNormalizer 类。
 
 ### MED-8: 消息发送后固定 sleep 1.5 秒
 
-**文件**: `src/bot/wechat_bot.py:329-330`
+**文件**: `rpa/bot/wechat_bot.py:329-330`
 **代码**: `if i < len(replies) - 1: time.sleep(1.5)`
 
 **逻辑问题**: 固定 1.5 秒间隔，没有考虑消息长度、网络状况、微信响应时间。
 
 ### MED-9: memory_engine 更新在发送成功之后但无错误处理
 
-**文件**: `wechat-mac-rpa/src/bot/wechat_bot.py:336-347`
+**文件**: `wechat-mac-rpa/rpa/bot/wechat_bot.py:336-347`
 
 **逻辑问题**: 如果 `update_user_wiki()` 失败，不会影响 tick 结果，但可能导致记忆不一致。
 
@@ -511,13 +511,13 @@ except Exception as exc:
 
 ### LOW-1: 多处使用 print 代替 logging
 
-**文件**: `src/reply/generator.py` 等
+**文件**: `rpa/reply/generator.py` 等
 
 **结构性问题**: 混用 print 和 logging，导致日志输出不可控（print 无法设置级别、无法重定向）。
 
 ### LOW-2: 硬编码路径使用字符串拼接
 
-**文件**: `src/storage/chat_history.py` 等
+**文件**: `rpa/storage/chat_history.py` 等
 
 **结构性问题**: `Path("data") / "something"` 的写法散落在多处，应该用统一的常量。
 

@@ -58,7 +58,7 @@ WeFlow 0.26.10 preview 提供本地 HTTP API（`127.0.0.1:5031`）：
 ### 2.1 模块职责
 
 ```
-src/
+rpa/
 ├── capture/
 │   └── window_capture.py       # L1: 截图（Quartz + screencapture）
 ├── ocr/
@@ -506,7 +506,7 @@ export WEFLOW_TICK_LIMIT=20       # 普通 tick 拉取条数
 
 ```python
 # 运行时查询当前模式
-from src.perception import get_perception_mode
+from rpa.perception import get_perception_mode
 
 mode = get_perception_mode()  # "ocr" | "weflow" | "hybrid"
 ```

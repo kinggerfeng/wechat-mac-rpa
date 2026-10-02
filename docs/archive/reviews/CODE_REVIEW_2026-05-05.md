@@ -65,7 +65,7 @@
 ## 3. CRITICAL 级问题
 
 ### C1. 硬编码外部项目路径导致配置注入错误
-- **文件**: `src/utils/llm_client.py:13`
+- **文件**: `rpa/utils/llm_client.py:13`
 - **代码**:
   ```python
   env_path = Path(__file__).parent.parent.parent / "omni-bot-sdk-oss" / ".env"
@@ -74,24 +74,24 @@
 - **影响**: LLM 调用失败、错误的 API 端点被使用、可能泄露外部项目的敏感配置。
 - **修复**: 从当前项目根目录的 `.env` 文件加载，或完全依赖环境变量。
 
-### C2. run_bot.py 从顶层 utils 导入而非 src.utils
+### C2. run_bot.py 从顶层 utils 导入而非 rpa.utils
 - **文件**: `run_bot.py:7`
 - **代码**: `from utils.qwen_client import QwenClient`
-- **问题**: 项目同时存在两个 `utils/` 目录：项目根目录的 `utils/` 和 `src/utils/` 。run_bot.py 使用了顶层的 `utils/qwen_client.py`，但 `src/utils/llm_client.py` 中定义了功能重叠的 KimiClient。
+- **问题**: 项目同时存在两个 `utils/` 目录：项目根目录的 `utils/` 和 `rpa/utils/` 。run_bot.py 使用了顶层的 `utils/qwen_client.py`，但 `rpa/utils/llm_client.py` 中定义了功能重叠的 KimiClient。
 - **影响**: 代码分裂、维护困难。如果将来删除顶层 `utils/`，run_bot.py 直接崩溃。
-- **修复**: 统一移入 `src/utils/`，修复所有导入路径。
+- **修复**: 统一移入 `rpa/utils/`，修复所有导入路径。
 
 ### C3. 80+ 处广泛异常吞噬
 - **重灾区**:
-  - `src/bot/wechat_bot.py` — 6 处
-  - `src/perception/smart_pipeline.py` — 5 处
-  - `src/reply/generator.py` — 3 处
-  - `src/memory/engine.py` — 6 处
-  - `src/storage/chat_history.py` — 4 处
-  - `src/storage/message_store.py` — 2 处
-  - `src/session/global_store.py` — 2 处
-  - `src/llm/openclaw_client.py` — 1 处
-  - `src/ocr/vision_ocr.py` — 1 处
+  - `rpa/bot/wechat_bot.py` — 6 处
+  - `rpa/perception/smart_pipeline.py` — 5 处
+  - `rpa/reply/generator.py` — 3 处
+  - `rpa/memory/engine.py` — 6 处
+  - `rpa/storage/chat_history.py` — 4 处
+  - `rpa/storage/message_store.py` — 2 处
+  - `rpa/session/global_store.py` — 2 处
+  - `rpa/llm/openclaw_client.py` — 1 处
+  - `rpa/ocr/vision_ocr.py` — 1 处
   - `其他脚本和测试文件` — 50+ 处
 - **问题**: 全项目 80 多处使用 `except Exception as e:` 或更粗暴的 `except:` 捕获所有异常，仅打印日志不重新抛出。
 - **影响**: 所有底层错误被静默吞掉，调试极其困难。关键模块如 OCR、LLM 调用、文件写入失败时上层无法感知失败，继续以错误状态运行。
@@ -99,10 +99,10 @@
 
 ### C4. 四个核心存储模块全部无锁
 - **文件**:
-  - `src/session/global_store.py`
-  - `src/logging/bot_logger.py`
-  - `src/storage/message_store.py`
-  - `src/storage/chat_history.py`
+  - `rpa/session/global_store.py`
+  - `rpa/logging/bot_logger.py`
+  - `rpa/storage/message_store.py`
+  - `rpa/storage/chat_history.py`
 - **问题**: 所有核心存储模块在 async 单线程事件循环中没有任何 `asyncio.Lock` 或 `threading.Lock` 保护。
 - **影响**:
   - `execution.jsonl`: 多个并发 tick() 写入时行业挤在一起，产生损坏的 JSONL，后续解析全部失败
@@ -111,19 +111,19 @@
 - **修复**: 为每个存储模块添加 `asyncio.Lock`，或者采用单线程写入队列。
 
 ### C5. Apple Vision 框架对象未释放
-- **文件**: `src/ocr/vision_ocr.py`
+- **文件**: `rpa/ocr/vision_ocr.py`
 - **问题**: `CGImageCreateWithImageInRect` 创建的 `CGImageRef`、`VNRecognizeTextRequest` 等 Core Foundation / Objective-C 对象在使用完毕后没有调用 `CGImageRelease()` 或 `.release()`。
 - **影响**: macOS 上每次 OCR 调用都泄漏内存。运行数小时后内存持续增长，最终触发 OOM 或被系统杀进程。
 - **修复**: 在 `cg_image` 使用完后调用 `Quartz.CGImageRelease(cg_image)`，确保所有 CF 对象有对应的 release。
 
 ### C6. SmartScreenCache LRU 缓存无内存大小限制
-- **文件**: `src/perception/smart_pipeline.py` (SmartScreenCache 类)
+- **文件**: `rpa/perception/smart_pipeline.py` (SmartScreenCache 类)
 - **问题**: `@functools.lru_cache(maxsize=100)` 缓存的是 `np.array`（截图像素数据）。Retina 屏幕截图可达 5MB+ 每张。
 - **影响**: 100 张截图 × 5MB = 500MB+ 常驻内存。进程运行越久内存占用越大。
 - **修复**: 使用 `WeakValueDictionary` 或定期清理缓存，或将缓存内容换为缩略图/hash 而非原始像素数据。
 
 ### C7. SmartPipeline 图片去重逻辑被 `if False` 禁用
-- **文件**: `src/perception/smart_pipeline.py`
+- **文件**: `rpa/perception/smart_pipeline.py`
 - **问题**: 整个 `ImageDescriptionDedupTracker` 类实现（约 60 行）被 `if False:` 包裹，后续代码中对 `_last_screenshot` 的所有去重判断都失效。
 - **影响**:
   - 所有图片消息被判定为非重复
@@ -132,7 +132,7 @@
 - **修复**: 删除 `if False:`，启用图片去重逻辑。
 
 ### C8. `_normalize_chat_name` 正则表达式有破坏性 side effects
-- **文件**: `src/bot/wechat_bot.py` (多处调用)
+- **文件**: `rpa/bot/wechat_bot.py` (多处调用)
 - **问题**:
   - `re.sub(r'^[a-zA-Z]+\d+', '', name)` 会将 `"AI2026讨论群"` → `""讨论群"` → `strip()` 后 `""讨论群"`
   - `re.sub(r'^[a-zA-Z]+\d+', '', name)` 会将 `"Team2026"` 完全删除为 `""`
@@ -146,13 +146,13 @@
 - **修复**: 重写归一化逻辑：只去除空白和少量标点，保留原始名称。如果需要消除前缀后缀，应使用更精确的规则。
 
 ### C9. OpenClawClient 在工具调用流中 raise RuntimeError
-- **文件**: `src/llm/openclaw_client.py`
+- **文件**: `rpa/llm/openclaw_client.py`
 - **问题**: LLM 调用出错时 `raise RuntimeError`，但 `ReplyGenerator` 中只有普通的 `except Exception` 打印日志，外层 `tick()` 方法没有对 `generate_reply()` 的 try/catch。
 - **影响**: 任何 LLM 网络故障、超时或服务器错误都会直接中断整个 `tick()` 循环，Bot 停止处理消息。与 QwenClient 静默返回空字符串的行为不一致。
 - **修复**: OpenClawClient 统一为返回错误对象或空字符串，或在 `wechat_bot.tick()` 中给 `generate_reply()` 添加保护性 try/catch。
 
 ### C10. VisionOCR 中 VNRecognizeTextRequest 对象可能被提前释放
-- **文件**: `src/ocr/vision_ocr.py`
+- **文件**: `rpa/ocr/vision_ocr.py`
 - **问题**: `request = VNRecognizeTextRequest()` 创建的 Objective-C 对象在 Python 方法结束时可能因引用计数归零而被释放，但 handler 是异步回调。
 - **影响**: 偶发性崩溢或识别失败（EXC_BAD_ACCESS）。
 - **修复**: 确保 request 对象在 handler 完成前保持活着，或使用同步 API 调用。
@@ -174,11 +174,11 @@
 ## 4. HIGH 级问题
 
 ### H1. KimiClient 硬编码 .env 路径为外部项目
-- **文件**: `src/utils/llm_client.py:13`
+- **文件**: `rpa/utils/llm_client.py:13`
 - **详情**: 同 C1，额外问题是 `.env` 中的 API key 通过 `os.environ.setdefault` 设置，不会覆盖已有环境变量。如果外部项目 `.env` 存在，会注入错误配置但不触发任何错误。
 
 ### H2. debug_logger.current 在 finally 块中可能为 None
-- **文件**: `src/bot/wechat_bot.py:361`
+- **文件**: `rpa/bot/wechat_bot.py:361`
 - **代码**:
   ```python
   finally:
@@ -190,21 +190,21 @@
 - **修复**: 所有访问 `debug_logger.current` 的位置前加 `if self.debug_logger.current is not None:` 保护。
 
 ### H3. 22 处访问 debug_logger 无 None 守卫
-- **文件**: `src/bot/wechat_bot.py`
+- **文件**: `rpa/bot/wechat_bot.py`
 - **行号**: 112, 121, 127, 144, 165, 170, 172, 214, 230, 234, 258, 264, 280, 294, 303, 316, 319, 327, 330, 356, 361, 418, 432
 - **问题**: 以上所有位置都直接访问 `self.debug_logger.xxx`，没有检查 `self.debug_logger.current` 是否为 None。
 - **影响**: 任何 tick() 中的异常可能导致后续所有 debug 日志操作崩溃。
 - **修复**: 在 `BotLogger` 中添加所有方法的 None 安全包装，或在 `wechat_bot.py` 中统一添加检查。
 
 ### H4. MessageExtractor.is_at_me 仅检查 "@" 字符
-- **文件**: `src/message/extractor.py`
+- **文件**: `rpa/message/extractor.py`
 - **代码**: `is_at_me = "@" in merged`
 - **问题**: 如果消息内容是 `"@所有人 今晚开会"` 或 `"推荐@张三的公众号"`，`is_at_me` 为 True，但实际并非 @Bot。
 - **影响**: 误判为需要回复的消息，浪费 LLM 调用。
 - **修复**: 检查 `"@自己的昵称"` 或结合 UI 中的高亮标记判断。
 
 ### H5. GlobalStore 中 `_msg_ids` 集合在 `_load()` 时重建不完整
-- **文件**: `src/session/global_store.py`
+- **文件**: `rpa/session/global_store.py`
 - **问题**:
   1. `_msg_ids` 使用 `id(msg)` 作为键，但 Python 的 `id()` 在对象生命周期结束后会被回收重用
   2. 重启后重建的 `_msg_ids` 包含的是新对象的 id()，与持久化的消息列表不一致
@@ -213,13 +213,13 @@
 - **修复**: 用消息内容 hash（如 MD5）替代 id()，或在消息中添加唯一 message_id 字段。
 
 ### H6. ChatMessage 有 `is_image_duplicate` 字段但 SmartPipeline 不填充
-- **文件**: `src/session/global_store.py`, `src/perception/smart_pipeline.py`
+- **文件**: `rpa/session/global_store.py`, `rpa/perception/smart_pipeline.py`
 - **问题**: `_load()` 加载了 `is_image_duplicate` 字段，但 SmartPipeline 的去重逻辑被 `if False` 禁用，所以该字段永远是 `False`。
 - **影响**: 持久化数据中的 `is_image_duplicate` 信息无实际意义。
 - **修复**: 同 C7。
 
 ### H7. SmartPipeline 中 `_last_screenshot` 引用 /tmp 文件
-- **文件**: `src/perception/smart_pipeline.py`
+- **文件**: `rpa/perception/smart_pipeline.py`
 - **问题**: `_last_screenshot` 存储 `Path` 引用指向 `/tmp/wechat_capture_*.png`，但原始文件从未被显式删除。
 - **影响**:
   - macOS tmp 清理周期不可预测（3 天），期间可能积累数百 MB
@@ -228,37 +228,37 @@
 - **修复**: 在 `set_last_screenshot()` 新值覆盖旧值时删除旧文件，或使用内存中的图片而非磁盘文件。
 
 ### H8. WindowCapture.__init__ 和 capture() 的 output_path 不一致
-- **文件**: `src/capture/window_capture.py`
+- **文件**: `rpa/capture/window_capture.py`
 - **问题**: `__init__` 默认 `output_path="/tmp/wechat_capture.png"`，但 `capture()` 方法强制覆盖为 `f"/tmp/wechat_capture_{ts}_{pid}.png"`。
 - **影响**: 外部代码如果依赖 `self.output_path` 获取截图路径，会得到错误的初始值。
 - **修复**: `__init__` 中不设置默认路径，或者确保 `capture()` 同步更新 `self.output_path`。
 
 ### H9. BotLogger 的 execution.jsonl 无换行保障
-- **文件**: `src/logging/bot_logger.py:124-125`
+- **文件**: `rpa/logging/bot_logger.py:124-125`
 - **问题**: `_execution_fp.write(line + "\n")` 写入 JSON 行，但如果程序崩溃导致最后一行不完整，下次启动追加时会在不完整的行后面继续写。
 - **影响**: `execution.jsonl` 中出现损坏的 JSON 行，解析时报错。
 - **修复**: 每次写入后 `f.flush()` + `os.fsync()`，或者使用 JSON Lines 库处理。
 
 ### H10. BotLogger 日志文件名基于初始化时间
-- **文件**: `src/logging/bot_logger.py`
+- **文件**: `rpa/logging/bot_logger.py`
 - **问题**: 日志文件名在 `__init__` 时用 `datetime.now().strftime("%Y%m%d")` 确定。如果进程跨午夜运行，日志仍然写入前一天的文件。
 - **影响**: 日志分割错误，排查问题时找不到对应日期的日志。
 - **修复**: 每次写入时检查日期，如变化则关闭旧文件、打开新文件。
 
 ### H11. PerceptionResult.debug_info 包含原始对象引用
-- **文件**: `src/perception/vision_pipeline.py:96`
+- **文件**: `rpa/perception/vision_pipeline.py:96`
 - **问题**: `debug_info=debug.__dict__` 直接暴露 `PerceptionDebugInfo` 的 `__dict__`。如果 `debug` 对象后续被修改，已生成的 `PerceptionResult` 的 `debug_info` 也会被意外修改。
 - **影响**: 不可变预期被违背，调试信息可能不一致。
 - **修复**: 使用 `copy.deepcopy(debug.__dict__)` 或 `dataclasses.asdict(debug)`。
 
 ### H12. GlobalStore.save() 中的 JSON 序列化可能失败
-- **文件**: `src/session/global_store.py`
+- **文件**: `rpa/session/global_store.py`
 - **问题**: `json.dumps(self.messages, default=lambda o: o.to_dict() if hasattr(o, "to_dict") else str(o))`。如果对象没有 `to_dict` 且包含不可序列化类型（如 `datetime`），fallback 为 `str(o)` 会丢失类型信息。
 - **影响**: 重启后加载的数据类型可能与原始类型不一致（如 `datetime` 变成字符串）。
 - **修复**: 确保所有存储对象都实现完整的 `to_dict()` 和 `from_dict()` 方法。
 
 ### H13. `_try_switch_to_unread_chat` 中 no_reply_chats 匹配
-- **文件**: `src/bot/wechat_bot.py`
+- **文件**: `rpa/bot/wechat_bot.py`
 - **问题**: `no_reply_chats = {"腾讯新闻", "文件传输助手"}` 用 `_normalize_chat_name(c)` 归一化后匹配。如果某个聊天名被归一化为空字符串，会与任何空字符串匹配。
 - **影响**: 归一化后为空的聊天名可能意外触发或错误匹配。
 - **修复**: 在 `_normalize_chat_name` 返回空字符串时保留原始名称做后备匹配。
@@ -270,7 +270,7 @@
 - **修复**: 改为 Qwen 系列模型（如 `qwen-max`），或将类名改为 `DashscopeClient`。
 
 ### H15. 三个 LLM Client 错误处理行为不统一
-- **文件**: `utils/qwen_client.py`, `src/utils/llm_client.py`, `src/llm/openclaw_client.py`
+- **文件**: `utils/qwen_client.py`, `rpa/utils/llm_client.py`, `rpa/llm/openclaw_client.py`
 - **行为对比**:
   | Client | 出错时 | 返回值 |
   |--------|--------|--------|
@@ -281,26 +281,26 @@
 - **修复**: 定义统一的 LLM Client 接口，所有客户端都返回统一的 Result 对象（包含 success/content/error 字段）。
 
 ### H16. ReplyGenerator 对 tool_calls 返回值处理有漏洞
-- **文件**: `src/reply/generator.py:170`
+- **文件**: `rpa/reply/generator.py:170`
 - **代码**: `raw_content = raw if isinstance(raw, str) else getattr(raw, "content", str(raw))`
 - **问题**: 如果 `raw` 是 OpenAI message 对象且 `content` 为 `None`，`raw_content` 变为 `None`。后续 `raw_content[:500]` 会抛 `TypeError`。
 - **影响**: 模型返回 tool_calls 但 content 为空时，整个回复生成崩溃。
 - **修复**: `raw_content = (raw if isinstance(raw, str) else getattr(raw, "content", None)) or ""`。
 
 ### H17. SmartPipeline SmartScreenCache 对空字符串 key 的缓存
-- **文件**: `src/perception/smart_pipeline.py`
+- **文件**: `rpa/perception/smart_pipeline.py`
 - **问题**: 如果截图全黑或获取失败，`image_hash()` 可能返回空字符串 `""`。LRU 缓存会以 `""` 为 key 缓存结果。
 - **影响**: 后续所有失败截图都会命中空 key 缓存，返回错误的 OCR 结果。
 - **修复**: 对空字符串 hash 返回特殊标记值，或者不缓存失败情况。
 
 ### H18. MessageStore.append() 写入后无 flush
-- **文件**: `src/storage/message_store.py`
+- **文件**: `rpa/storage/message_store.py`
 - **问题**: `f.write(...)` 后没有 `f.flush()` 或 `os.fsync()`。
 - **影响**: 系统崩溃时可能丢失最近几条消息记录。
 - **修复**: 添加 `f.flush()` 和 `os.fsync(f.fileno())`。
 
 ### H19. ChatHistory.append() 写入后无 flush
-- **文件**: `src/storage/chat_history.py:157, 167`
+- **文件**: `rpa/storage/chat_history.py:157, 167`
 - **问题**: 同 H18，两个文件写入都无 flush。
 - **修复**: 同 H18。
 
@@ -334,7 +334,7 @@
 - **修复**: 创建 `pyproject.toml`，定义依赖和项目元数据。
 
 ### M4. 测试文件分散在两个目录
-- **结构**: `tests/` (8 个) + `src/tests/` (17 个)
+- **结构**: `tests/` (8 个) + `rpa/tests/` (17 个)
 - **影响**: 测试组织混乱，pytest 默认可能只收集其中一个。
 - **修复**: 统一移至 `tests/` 目录，按模块组织。
 
@@ -345,25 +345,25 @@
 - **修复**: 所有 `subprocess.run` 统一添加 `timeout` 和 `check=True`，并包裹 try/except。
 
 ### M6. BotLogger 的 RotatingFileHandler 配置不当
-- **文件**: `src/logging/bot_logger.py`
+- **文件**: `rpa/logging/bot_logger.py`
 - **问题**: `maxBytes=5*1024*1024` (5MB)，`backupCount=5`。但文件名包含日期，同一天内达到 5MB 时 rotation 会产生 `bot_20260105.log.1`。
 - **影响**: 日志轮转逻辑与按日命名冲突，排查问题时需要查看多个文件。
 - **修复**: 使用单一文件名，让 RotatingFileHandler 自己处理日期分割。
 
 ### M7. SmartPipeline 无重试机制
-- **文件**: `src/perception/smart_pipeline.py`
+- **文件**: `rpa/perception/smart_pipeline.py`
 - **问题**: 直接调用 QwenVLClient，但 QwenVLClient 内部无重试逻辑。网络抖动时直接失败。
 - **影响**: 偶发性网络错误导致整个 tick 失败。
 - **修复**: 添加 `@tenacity.retry` 或自实现退避重试。
 
 ### M8. SmartPipeline 的 `image_description` 和 `image_text` 未填充
-- **文件**: `src/perception/smart_pipeline.py`
+- **文件**: `rpa/perception/smart_pipeline.py`
 - **问题**: dataclass 定义了这两个字段，但 `run()` 返回时未填充（注释说"云模型接入后填充"）。
 - **影响**: 代码与文档不一致，产生误导。
 - **修复**: 删除未使用字段或实现填充逻辑。
 
 ### M9. VisionPipeline debug_info 包含 OCRLine 对象列表
-- **文件**: `src/perception/vision_pipeline.py`
+- **文件**: `rpa/perception/vision_pipeline.py`
 - **问题**: `debug_info` 中的值包含 `OCRLine` 对象列表，不是纯 dict。序列化到 JSON 时会失败。
 - **影响**: `PerceptionResult.debug_info` 不能安全地 `json.dumps()`。
 - **修复**: 在构建 `debug_info` 时将所有对象转为 dict。
@@ -404,8 +404,8 @@
 |:------|:------|:------|
 | L1 | SmartPipeline 与 VisionPipeline 有大量重复逻辑（截图获取、OCR 调用） | `perception/*.py` |
 | L2 | MessageStore 与 ChatHistory 有重复的文件写入逻辑 | `storage/*.py` |
-| L3 | `utils/qwen_client.py` 与 `src/utils/llm_client.py` 功能重叠但接口不同 | `utils/*.py` |
-| L4 | `src/llm/openclaw_client.py` 中 OpenClawClient 与 KimiClient 职责重叠 | `llm/*.py` |
+| L3 | `utils/qwen_client.py` 与 `rpa/utils/llm_client.py` 功能重叠但接口不同 | `utils/*.py` |
+| L4 | `rpa/llm/openclaw_client.py` 中 OpenClawClient 与 KimiClient 职责重叠 | `llm/*.py` |
 | L5 | 大量类似的文件操作模式（打开、写入、关闭）未抽象为工具函数 | 全项目 |
 | L6 | 各模块错误处理逻辑不统一 | 全项目 |
 | L7 | 配置管理分散在多个文件中 | 全项目 |
@@ -703,7 +703,7 @@ WindowCapture.capture()
 
 #### C13. MemoryEngine._do_update 与 KimiClient 接口不兼容
 
-**位置**: `src/memory/engine.py:277`
+**位置**: `rpa/memory/engine.py:277`
 **代码**:
 ```python
 response = self.llm_client.chat(
@@ -718,7 +718,7 @@ response = self.llm_client.chat(
 
 #### C14. VisionOCREngine 未释放所有 Core Foundation / Vision 对象
 
-**位置**: `src/ocr/vision_ocr.py:52-71`
+**位置**: `rpa/ocr/vision_ocr.py:52-71`
 **问题**: 每次 OCR 创建4个需要显式释放的对象：
 - `CGImageSourceCreateWithURL` → `CFRelease(image_source)`
 - `CGImageSourceCreateImageAtIndex` → `CFRelease(cg_image)`
@@ -731,14 +731,14 @@ response = self.llm_client.chat(
 
 #### C15. MessageSender.send 覆盖用户系统剪贴板且不可逆
 
-**位置**: `src/action/message_sender.py:58`
+**位置**: `rpa/action/message_sender.py:58`
 **问题**: `pbcopy` 会覆盖用户整个系统剪贴板内容。发送完消息后没有任何机制恢复用户原来的剪贴板内容。
 **影响**: 用户工作流中的剪贴板内容永久丢失（不可逆副作用）。
 **修复**: 发送前先读取并保存剪贴板内容，发送完消息后恢复（或使用 macOS `NSPasteboard` API 直接操作而不影响系统剪贴板）。
 
 #### C16. WindowCapture 截图验证失败后仍返回 True
 
-**位置**: `src/capture/window_capture.py:184-187`
+**位置**: `rpa/capture/window_capture.py:184-187`
 **代码**:
 ```python
 except Exception as e:
@@ -755,14 +755,14 @@ except Exception as e:
 
 #### H12. MemoryEngine Worker 线程 daemon=True 导致任务丢失
 
-**位置**: `src/memory/engine.py:444`
+**位置**: `rpa/memory/engine.py:444`
 **问题**: Worker 线程设置为 `daemon=True`，当主线程退出时 worker 立即终止，正在处理的 wiki 更新任务会被强制中断。
 **影响**: 最后几个用户的 wiki 更新可能永远不保存。
 **修复**: 改为非 daemon 线程，或在关机时检查队列并同步处理完毕。
 
 #### H13. MemoryEngine 队列处理逻辑导致任务永不执行
 
-**位置**: `src/memory/engine.py:430-439`
+**位置**: `rpa/memory/engine.py:430-439`
 **代码**:
 ```python
 if len(self._update_queue) >= 3:
@@ -780,14 +780,14 @@ elif self._update_queue:
 
 #### H14. ChatHistory._append_to_jsonl 无文件锁
 
-**位置**: `src/storage/chat_history.py:156`
+**位置**: `rpa/storage/chat_history.py:156`
 **问题**: 以追加模式 `"a"` 打开 JSONL 文件写入，无任何锁保护。
 **影响**: 多个 tick 并发写入时，JSONL 行可能交错损坏（与 MessageStore/BotLogger 同类问题）。
 **修复**: 添加 fcntl 文件锁或使用单一写入线程。
 
 #### H15. LayoutParser.parse 中 PIL Image 未关闭
 
-**位置**: `src/layout/layout_parser.py:59`
+**位置**: `rpa/layout/layout_parser.py:59`
 **代码**:
 ```python
 img = Image.open(image_path).convert("RGB")
@@ -798,14 +798,14 @@ img = Image.open(image_path).convert("RGB")
 
 #### H16. LoginRecovery 和 WindowCapture 未检查 /tmp 磁盘空间
 
-**位置**: `src/capture/window_capture.py:147-160`, `src/action/login_recovery.py:78-86`
+**位置**: `rpa/capture/window_capture.py:147-160`, `rpa/action/login_recovery.py:78-86`
 **问题**: 多处调用 `screencapture` 写入 /tmp，但从不检查 /tmp 剩余空间。
 **影响**: /tmp 分区满时截图失败，错误信息被 `check=True` 捕捉为 CalledProcessError，但处理不充分。
 **修复**: 截图前检查 /tmp 剩余空间，低于 500MB 时清理旧截图。
 
 #### H17. SmartPipeline 旧截图文件永远不被清理
 
-**位置**: `src/perception/smart_pipeline.py`
+**位置**: `rpa/perception/smart_pipeline.py`
 **问题**: `WindowCapture.capture()` 每次生成新的 `/tmp/wechat_capture_*.png`。SmartPipeline 保存 `_last_screenshot` 用于像素 diff，但旧文件永远不被删除。
 **影响**: /tmp 分区被无限填充，最终导致磁盘空间耗尽。
 **修复**: 在 `perceive()` 中删除上一次的旧截图，或定期清理 /tmp 下的 wechat_capture_* 文件。
@@ -816,7 +816,7 @@ img = Image.open(image_path).convert("RGB")
 
 #### M11. PyAutoGUIInteractor 使用绝对坐标而非相对窗口坐标
 
-**位置**: `src/action/ui_interactor.py:46-48`
+**位置**: `rpa/action/ui_interactor.py:46-48`
 **代码**:
 ```python
 center_x = item.rect.x + item.rect.width // 2
@@ -829,7 +829,7 @@ pyautogui.click(center_x, center_y)
 
 #### M12. OCRElement.normalized_x/y 硬编码尺寸
 
-**位置**: `src/ocr/vision_ocr.py:148-154`
+**位置**: `rpa/ocr/vision_ocr.py:148-154`
 **代码**:
 ```python
 @property
@@ -846,21 +846,21 @@ def normalized_y(self) -> float:
 
 #### M13. SmartPipeline API 和 Local 串行执行
 
-**位置**: `src/perception/smart_pipeline.py`
+**位置**: `rpa/perception/smart_pipeline.py`
 **问题**: 注释说"本地 Layout + qwen3.6-flash API（并行）"，但代码实际是先调用 `_run_local_pipeline`，再调用 `_run_api_pipeline`，完全是串行执行。
 **影响**: API 调用浪费了本地处理时间，总延迟更高。
 **修复**: 使用 ThreadPoolExecutor 并行执行（代码中已导入但未使用）。
 
 #### M14. builtin_tools 使用正则解析 HTML
 
-**位置**: `src/tools/builtin_tools.py`
+**位置**: `rpa/tools/builtin_tools.py`
 **问题**: `_web_search` 和 `_browse_url` 全面依赖正则表达式解析 HTML。搜索结果页面结构变化即失效；浏览网页时可能提取到 JavaScript 代码。无 User-Agent 旋转、无请求间隔、无重试机制。
 **影响**: 搜索功能不稳定，可能被 360 封 IP。
 **修复**: 使用 BeautifulSoup 等专业 HTML 解析库，添加请求间隔和重试逻辑。
 
 #### M15. MessageExtractor 和 LayoutParser 中多处 Image.open 未关闭
 
-**位置**: `src/layout/layout_parser.py:59, 258`, `src/message/extractor.py`可能存在
+**位置**: `rpa/layout/layout_parser.py:59, 258`, `rpa/message/extractor.py`可能存在
 **问题**: 同 H15，多处 `Image.open()` 无对应关闭。
 **影响**: 文件句柄泄漏累积。
 **修复**: 统一使用 `with Image.open(...)` 上下文管理器。
@@ -877,14 +877,14 @@ def normalized_y(self) -> float:
 
 #### L22. SmartPipeline docstring 中模型名与实际不一致
 
-**位置**: `src/perception/smart_pipeline.py` 多处 docstring
+**位置**: `rpa/perception/smart_pipeline.py` 多处 docstring
 **问题**: docstring 中 "qwen3.6-flash" 出现 9+ 次，但实际 API 调用中的 `QWEN_API_MODEL = "qwen-vl-ocr"`。
 **影响**: 文档与代码不一致，误导新开发者。
 **修复**: 统一模型名称，使用配置变量而非硬编码字符串。
 
 #### L23. VisionPipeline.perceive 中 tick_id 永远为 0
 
-**位置**: `src/perception/vision_pipeline.py:64`
+**位置**: `rpa/perception/vision_pipeline.py:64`
 **代码**:
 ```python
 debug = self.debug_logger.start_tick(0, image_path)
@@ -895,7 +895,7 @@ debug = self.debug_logger.start_tick(0, image_path)
 
 #### L24. WindowCapture._find_window_with_options 未释放 window_list
 
-**位置**: `src/capture/window_capture.py:84`
+**位置**: `rpa/capture/window_capture.py:84`
 **问题**: `Quartz.CGWindowListCopyWindowInfo` 返回的 CFArrayRef 未被释放。
 **影响**: 每次截图泄漏一个 CFArrayRef。
 **修复**: 在方法末尾添加 CFRelease。

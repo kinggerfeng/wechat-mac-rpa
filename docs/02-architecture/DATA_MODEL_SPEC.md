@@ -353,10 +353,10 @@ Chatroom + Messages + Persons + Aliases + Facts + Overrides
 
 ### Phase 1：数据库基建（MVP）
 
-1. 创建 `src/db/` 包：SQLAlchemy 模型、连接池、迁移脚本。
+1. 创建 `rpa/db/` 包：SQLAlchemy 模型、连接池、迁移脚本。
 2. 实现 `ChatHistoryRepository`：chatroom / message / chat_member 的 upsert/query。
 3. 修改 `GlobalStore.save()` 双写 JSON + DB。
-4. 新增 `scripts/db/migrate_exports_to_db.py`：批量导入 `data/exports/` 和 `data/chats/`。
+4. 新增 `tools/data/migrate_exports_to_db.py`：批量导入 `data/exports/` 和 `data/chats/`。
 
 ### Phase 2：身份与 wiki
 

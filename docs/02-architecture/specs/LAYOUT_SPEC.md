@@ -57,6 +57,6 @@ UILayout(
 本模块不抛异常。OCR 元素为空时返回空 `UILayout`。
 
 ## 7. 依赖关系
-- 依赖 `src.models.base`
-- 依赖 `src.layout.profile.LayoutProfile`
-- 被 `src.perception` 调用
+- 依赖 `rpa.models.base`
+- 依赖 `rpa.layout.profile.LayoutProfile`
+- 被 `rpa.perception` 调用

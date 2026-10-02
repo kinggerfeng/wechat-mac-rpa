@@ -69,5 +69,5 @@ merge_tick(
 | 保存失败 | 记录 warning/error，不阻断主流程 |
 
 ## 7. 依赖关系
-- 依赖 `src.models.base`
-- 依赖 `src.utils.chat_utils._is_group_chat_name`（仅用于 `_normalize_sender` 的兜底判断）
+- 依赖 `rpa.models.base`
+- 依赖 `rpa.utils.chat_utils._is_group_chat_name`（仅用于 `_normalize_sender` 的兜底判断）

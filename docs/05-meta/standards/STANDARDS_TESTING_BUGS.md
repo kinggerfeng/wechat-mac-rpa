@@ -47,7 +47,7 @@ auto_add_error_case(
 # 查看 tests/fixtures/errors/error_*.json
 
 # 4. 修复代码
-# 修改 src/parser/ 或 src/ocr/ 逻辑
+# 修改 rpa/parser/ 或 rpa/ocr/ 逻辑
 
 # 5. 验证修复
 ./run_tests_v2.sh

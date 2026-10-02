@@ -17,7 +17,7 @@
 
 ### 1. `_extract_json` 括号深度计数不处理字符串内括号
 
-**文件**：`src/reply/generator.py` 第 524-557 行
+**文件**：`rpa/reply/generator.py` 第 524-557 行
 
 **问题**：原实现用括号深度计数 `depth++`/`depth--` 寻找 JSON 边界，但未跟踪是否在字符串内部。当 LLM 返回的 JSON 值中包含 `{` 或 `}` 字符时（如 `{"replies": ["这是{测试}消息"]}`），`depth` 会在字符串内的 `}` 处归零，导致 JSON 被截断解析失败。
 
@@ -51,7 +51,7 @@ return obj
 
 ### 2. LCS 算法 O(m×n) 无上限保护
 
-**文件**：`src/session/global_store.py` 第 186-219 行
+**文件**：`rpa/session/global_store.py` 第 186-219 行
 
 **问题**：`_lcs_match` 的 DP 表大小为 `len(history) × len(tick)`，且 `_match_single` 内部调用 `SequenceMatcher.ratio()` 也是 O(L²)。整体复杂度 O(m × n × L²)。大群聊（历史 200 条，tick 50 条）下每个 tick 耗时可能到秒级，影响 bot 响应延迟。
 
@@ -76,7 +76,7 @@ if m > _MAX_HISTORY_FOR_LCS:
 
 ### 3. tick_log SQLite 连接未用 context manager
 
-**文件**：`src/bot/wechat_bot.py` 第 342-389 行
+**文件**：`rpa/bot/wechat_bot.py` 第 342-389 行
 
 **问题**：原代码在 `try` 块内 `conn.commit(); conn.close()`，如果 `execute` 抛异常，`conn.close()` 不会执行，连接泄漏。SQLite 长期运行会积累 `OperationalError: database is locked` 或文件句柄耗尽。
 
@@ -115,7 +115,7 @@ finally:
 
 ### 4. 剪贴板保存/恢复竞态
 
-**文件**：`src/action/message_sender.py` 第 284-298、442-450 行
+**文件**：`rpa/action/message_sender.py` 第 284-298、442-450 行
 
 **问题**：`send()` 在开始时 `pbpaste` 保存原始剪贴板，结束时 `pbcopy` 恢复。如果两个 `send()` 调用间隔很短（bot 连续回复两条消息），第二次 `send()` 保存的 `original_clipboard` 是第一次 `send()` 写入的内容（`pbcopy(text)` 的结果），用户原始剪贴板内容永久丢失。
 
@@ -144,7 +144,7 @@ def _send_impl(self, text, chat_name=""):
 
 ### 5. Memory Worker `_do_update` 异常后任务丢失
 
-**文件**：`src/memory/engine.py` 第 1022-1024 行
+**文件**：`rpa/memory/engine.py` 第 1022-1024 行
 
 **问题**：Worker 循环 `for task in batch: self._do_update(task)` 没有 try/except。`_do_update` 内部 `_try_generate_wiki` 最多重试 3 次后抛异常，但如果出现未预期的异常（如 `KeyError`、网络断开、JSON 解析失败），整个 batch 剩余任务全部跳过。且这些任务已从队列中移除，永久丢失。
 
@@ -178,7 +178,7 @@ for task in batch:
 
 ### 6. SmartPipeline 稳定模式无退出机制
 
-**文件**：`src/perception/smart_pipeline.py`
+**文件**：`rpa/perception/smart_pipeline.py`
 
 **问题**：`_consecutive_low_diff` 计数器只递增（hash 一致时）或归零（diff 高于阈值时）。一旦进入稳定模式（`_consecutive_low_diff >= 3`），阈值降低到 `0.0005`。后续即使界面有变化，只要 diff < 0.0005 就仍然跳过。长时间无消息时计数器只增不减，稳定模式永远无法退出。
 
@@ -260,7 +260,7 @@ dedup:
 
 ### 9. WeFlow 模式切换后无回退
 
-**文件**：`src/bot/wechat_bot.py`
+**文件**：`rpa/bot/wechat_bot.py`
 
 **问题**：初始化时注入 WeFlow 历史后切换到 OCR 模式。如果 OCR 持续失败（窗口被遮挡、截屏异常），没有回退到 WeFlow 的逻辑。
 
@@ -284,7 +284,7 @@ self._ocr_fail_count = 0
 
 ### 10. 别名过滤逻辑重复
 
-**文件**：`src/memory/engine.py` 第 591-618 行 vs 第 630-668 行
+**文件**：`rpa/memory/engine.py` 第 591-618 行 vs 第 630-668 行
 
 **问题**：`_extract_aliases_from_user_wiki` 和 `_extract_aliases_from_group_wiki` 有几乎相同的过滤逻辑（`invalid_keywords`、长度检查、标点检查），但各自硬编码 `invalid_keywords` 列表，容易只改一处忘改另一处。
 
@@ -314,7 +314,7 @@ def _validate_alias(self, alias: str, main_name: str, existing_mains: set) -> bo
 
 ### 11. Worker 队列无容量限制
 
-**文件**：`src/memory/engine.py`
+**文件**：`rpa/memory/engine.py`
 
 **问题**：`_update_queue` 是纯 `List`，无最大长度。如果 LLM 持续 429/超时，队列无限增长（每 5s 取 3 条，但 enqueue 可能更快），内存持续上涨。
 

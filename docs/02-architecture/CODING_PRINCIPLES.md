@@ -228,7 +228,7 @@ is_group = re.search(r'（\d+）$', chat_name)
 def _is_group_chat_name(name): return re.search(r'[（(]\d+[）)]$', name)
 
 # 其他模块统一 import
-from src.utils.chat_utils import _is_group_chat_name
+from rpa.utils.chat_utils import _is_group_chat_name
 ```
 
 **Checklist**：
@@ -331,16 +331,16 @@ state.messages.append(msg)
 
 ```bash
 # 1. 找出所有直接引用
-grep -rn "chat_name\|sender\|is_group" src/ --include="*.py"
+grep -rn "chat_name\|sender\|is_group" rpa/ --include="*.py"
 
 # 2. 找出所有正则匹配（容易被漏掉的独立实现）
-grep -rn "re.search\|re.match\|re.sub" src/ --include="*.py" -B 2 -A 2
+grep -rn "re.search\|re.match\|re.sub" rpa/ --include="*.py" -B 2 -A 2
 
 # 3. 找出所有字段赋值（回写）
-grep -rn "\.chat_name =\|\.sender =" src/ --include="*.py"
+grep -rn "\.chat_name =\|\.sender =" rpa/ --include="*.py"
 
 # 4. 运行全量测试
-python -m pytest src/tests/
+python -m pytest rpa/tests/
 ```
 
 **反例**：`eef109f` 改了 `_normalize_chat_name`（截断后缀），但没有搜 `smart_pipeline.py` 里的独立正则，导致群聊判断失效。

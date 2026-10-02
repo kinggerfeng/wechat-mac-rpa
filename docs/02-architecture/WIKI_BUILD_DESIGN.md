@@ -12,7 +12,7 @@ data/chats/*.json  (wechat 导出数据)
         │
         ▼
 ┌─────────────────────────────┐
-│  scripts/bulk_import_from_chats.py  │
+│  tools/data/bulk_import_from_chats.py  │
 │  (批量导入脚本)               │
 └─────────────────────────────┘
         │
@@ -26,7 +26,7 @@ data/chats/*.json  (wechat 导出数据)
         │
         ▼
 ┌─────────────────────────────┐
-│  src/memory/engine.py │
+│  rpa/memory/engine.py │
 │  (MemoryEngine LLM Wiki 引擎)│
 └─────────────────────────────┘
         │

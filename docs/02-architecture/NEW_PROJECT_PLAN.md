@@ -10,19 +10,19 @@
 
 | 模块 | 操作 | 说明 |
 |------|------|------|
-| `src/models/` | 直接搬 | 领域模型，无依赖 |
-| `src/capture/` | 直接搬 | 截图模块，无变化 |
-| `src/ocr/` | 直接搬 | OCR，修 normalized_x/y 硬编码分辨率 |
-| `src/layout/` | 直接搬 | 布局解析 |
-| `src/message/` | 直接搬 | 消息提取，修 used_self 去重 |
-| `src/perception/` | 直接搬 | SmartPipeline + VisionPipeline，修 is_group 缺失 |
-| `src/session/` | 直接搬 | GlobalStore 去重+持久化 |
-| `src/action/` | 直接搬 | 消息发送+聊天切换，修 cliclick 硬编码路径 |
-| `src/tools/` | 直接搬 | tool_registry + builtin_tools（已修 bs4） |
-| `src/memory/` | 直接搬 | MemoryEngine（已修路径+case-insensitive） |
-| `src/badcase/` | 直接搬 | JudgeWorker + CaseGenerator + CaseDB |
-| `src/utils/` | 直接搬 | chat_utils, text_utils, xml_utils, qwen_client |
-| `src/logging/` | 直接搬 | BotLogger, DebugLogger |
+| `rpa/models/` | 直接搬 | 领域模型，无依赖 |
+| `rpa/capture/` | 直接搬 | 截图模块，无变化 |
+| `rpa/ocr/` | 直接搬 | OCR，修 normalized_x/y 硬编码分辨率 |
+| `rpa/layout/` | 直接搬 | 布局解析 |
+| `rpa/message/` | 直接搬 | 消息提取，修 used_self 去重 |
+| `rpa/perception/` | 直接搬 | SmartPipeline + VisionPipeline，修 is_group 缺失 |
+| `rpa/session/` | 直接搬 | GlobalStore 去重+持久化 |
+| `rpa/action/` | 直接搬 | 消息发送+聊天切换，修 cliclick 硬编码路径 |
+| `rpa/tools/` | 直接搬 | tool_registry + builtin_tools（已修 bs4） |
+| `rpa/memory/` | 直接搬 | MemoryEngine（已修路径+case-insensitive） |
+| `rpa/badcase/` | 直接搬 | JudgeWorker + CaseGenerator + CaseDB |
+| `rpa/utils/` | 直接搬 | chat_utils, text_utils, xml_utils, qwen_client |
+| `rpa/logging/` | 直接搬 | BotLogger, DebugLogger |
 | `scripts/` | 直接搬 | monitor_benchmark, run_daily_benchmark, generate_dashboard, migrate_benchmarks_to_db |
 | `data/memory/` | 直接搬 | wiki + overrides |
 | `tests/` | 直接搬 | 所有 test 文件 + fixtures |
@@ -34,7 +34,7 @@
 |------|------|------|
 | `outputs/rpa_integration/system_prompt.md` | 搬到 `data/persona.md` | 本地 DT 人格 prompt |
 | `outputs/rpa_integration/style_profile.json` | 搬到 `data/style_profile.json` | 风格配置 |
-| `outputs/rpa_integration/rpa_bot_dense_message_level.py` | 搬到 `src/generate/retriever.py` | 检索模块，修路径 |
+| `outputs/rpa_integration/rpa_bot_dense_message_level.py` | 搬到 `rpa/generate/retriever.py` | 检索模块，修路径 |
 | `outputs/evaluation/adversarial_test_cases_v2.json` | 搬到 `data/adversarial_cases.json` | 50 对抗 case |
 | `models/bge-small-zh-v1.5/` | 搬到 `models/bge-small-zh-v1.5/` | BGE 模型 |
 | `outputs/cache/*.pkl` | 搬到 `data/vector_indexes/` | 向量索引 |
@@ -45,17 +45,17 @@
 
 | 文件 | 改动 |
 |------|------|
-| `src/reply/generator.py` | **唯一大改**：system prompt 换成 DT 的，加入 retriever，保留工具调用 |
-| `src/reply/generator.py:_system_prompt()` | 改为读 `data/persona.md` |
-| `src/reply/generator.py:generate()` | 加入检索步骤：调 retriever.search() → few-shot 注入 |
-| `src/reply/generator.py:_parse_replies()` | 兼容 DT 的 `["msg1","msg2"]` 格式 |
-| `src/ocr/vision_ocr.py:normalized_x/y` | 1760/1280 → 用实际图片尺寸 |
-| `src/perception/vision_pipeline.py` | 补 `is_group` 字段 |
-| `src/action/chat_list_clicker.py` | 硬编码 cliclick → shutil.which |
-| `src/memory/engine.py` | 已完成（绝对路径+case-insensitive） |
-| `src/badcase/judge_worker.py` | 加 DT 的 3 个维度（语气词、短句、事实污染） |
-| `src/badcase/case_db.py` | 加 `bench_adversarial_cases` 表 |
-| `src/tools/builtin_tools.py` | 已完成（bs4 替换） |
+| `rpa/reply/generator.py` | **唯一大改**：system prompt 换成 DT 的，加入 retriever，保留工具调用 |
+| `rpa/reply/generator.py:_system_prompt()` | 改为读 `data/persona.md` |
+| `rpa/reply/generator.py:generate()` | 加入检索步骤：调 retriever.search() → few-shot 注入 |
+| `rpa/reply/generator.py:_parse_replies()` | 兼容 DT 的 `["msg1","msg2"]` 格式 |
+| `rpa/ocr/vision_ocr.py:normalized_x/y` | 1760/1280 → 用实际图片尺寸 |
+| `rpa/perception/vision_pipeline.py` | 补 `is_group` 字段 |
+| `rpa/action/chat_list_clicker.py` | 硬编码 cliclick → shutil.which |
+| `rpa/memory/engine.py` | 已完成（绝对路径+case-insensitive） |
+| `rpa/badcase/judge_worker.py` | 加 DT 的 3 个维度（语气词、短句、事实污染） |
+| `rpa/badcase/case_db.py` | 加 `bench_adversarial_cases` 表 |
+| `rpa/tools/builtin_tools.py` | 已完成（bs4 替换） |
 | 所有文件 | 搜 `/Users/yourname/` 硬编码路径 → 改相对路径 |
 
 ---
@@ -77,7 +77,7 @@
 
 ```
 wechat-twin/
-├── src/                    # 老项目 wechat-mac-rpa/src/ 直接搬
+├── rpa/                    # 老项目 wechat-mac-rpa/rpa/ 直接搬
 │   ├── models/
 │   ├── capture/
 │   ├── ocr/
@@ -175,7 +175,7 @@ def _parse_replies(self, text: str) -> List[str]:
 ```
 1. 建目录
 2. 复制 .env, requirements.txt
-3. 复制 src/ 全部（从 wechat-mac-rpa）
+3. 复制 rpa/ 全部（从 wechat-mac-rpa）
 4. 复制 scripts/ 全部
 5. 复制 tests/ 全部
 6. 复制 data/memory/ 全部
@@ -197,8 +197,8 @@ def _parse_replies(self, text: str) -> List[str]:
 
 ## 7. 不改但要注意的
 
-- `src/reply/policy.py` — 回复决策逻辑不变（群聊/私聊判断）
-- `src/bot/wechat_bot.py` — Bot 主循环不变，只 init 时传 retriever
-- `src/tools/stock_tools.py` — 股票查询不变
-- `src/session/global_store.py` — 去重逻辑不变
-- `src/perception/smart_pipeline.py` — 感知管道不变
+- `rpa/reply/policy.py` — 回复决策逻辑不变（群聊/私聊判断）
+- `rpa/bot/wechat_bot.py` — Bot 主循环不变，只 init 时传 retriever
+- `rpa/tools/stock_tools.py` — 股票查询不变
+- `rpa/session/global_store.py` — 去重逻辑不变
+- `rpa/perception/smart_pipeline.py` — 感知管道不变

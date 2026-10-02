@@ -9,7 +9,7 @@
 
 ## 背景
 
-当前 `src/reply/generator.py` 基于单次 LLM 调用生成回复。`deepseek-v4-flash` 虽有 thinking 能力，但受限于：
+当前 `rpa/reply/generator.py` 基于单次 LLM 调用生成回复。`deepseek-v4-flash` 虽有 thinking 能力，但受限于：
 
 1. `persona.md` 明确压制思考过程（“不要分析，不要推理”）。
 2. 固定 `max_tokens=2000`，复杂场景思考空间不足。
@@ -71,7 +71,7 @@
 
 ### ReAct 循环与现有工具循环的关系
 
-现有 `src/reply/generator.py` 第 358-488 行**已经是一个 ReAct 循环**：模型返回 `tool_calls` → 执行工具 → 把结果塞回 `messages` → 再调一次 LLM。本次改动不是替换循环，而是在现有循环上做增量改造：
+现有 `rpa/reply/generator.py` 第 358-488 行**已经是一个 ReAct 循环**：模型返回 `tool_calls` → 执行工具 → 把结果塞回 `messages` → 再调一次 LLM。本次改动不是替换循环，而是在现有循环上做增量改造：
 
 1. **注册 `think` 工具**。
 2. **在工具执行分支处理 `think`**：`think` 不调用外部服务，直接返回确认字符串。
@@ -293,7 +293,7 @@ messages.append(assistant_msg)
 
 ### 8. Session Memory 清理
 
-删除 `src/reply/session_memory.py` 中的死代码：
+删除 `rpa/reply/session_memory.py` 中的死代码：
 - `SessionSnapshot.bot_replies`
 - `SessionSnapshot.add_reply()`
 - `SessionSnapshot.get_recent_replies()`
@@ -302,12 +302,12 @@ messages.append(assistant_msg)
 
 保留工具结果缓存逻辑不变。
 
-同步删除 `src/reply/generator.py` 中对 `session_memory.add_reply()` 的调用。
+同步删除 `rpa/reply/generator.py` 中对 `session_memory.add_reply()` 的调用。
 
 受影响的测试文件：
-- `src/tests/test_session_memory.py`：删除 `get_recent_replies` / `add_reply` 相关测试。
+- `rpa/tests/test_session_memory.py`：删除 `get_recent_replies` / `add_reply` 相关测试。
 - `tests_integration/test_hermes_integration.py`：整体删除或改为测试 ReAct + Self-Refine。
-- `src/tests/test_reply_generator.py`（如存在 Hermes fallback 相关断言）：更新预期。
+- `rpa/tests/test_reply_generator.py`（如存在 Hermes fallback 相关断言）：更新预期。
 
 ### 9. Hermes 清理
 
@@ -406,7 +406,7 @@ if self.enable_self_refine:
 
 ## 接口变更
 
-### `src/utils/qwen_client.py`
+### `rpa/utils/qwen_client.py`
 
 无需新增公共接口，但需确保以下行为：
 
@@ -548,9 +548,9 @@ self.last_iterate_raw: str = ""  # Iterate 原始输出
 按以下顺序分阶段实现，每阶段可独立验证：
 
 ### Phase 1: 清理旧代码
-1. 删除 `src/reply/generator.py` 中的 Hermes 相关代码。
-2. 删除 `src/reply/generator.py` 中的两步推理代码。
-3. 删除 `src/reply/session_memory.py` 中的 `bot_replies` 死代码。
+1. 删除 `rpa/reply/generator.py` 中的 Hermes 相关代码。
+2. 删除 `rpa/reply/generator.py` 中的两步推理代码。
+3. 删除 `rpa/reply/session_memory.py` 中的 `bot_replies` 死代码。
 4. 删除 `wechat_bot.py` 中的 `complex_llm_client` 传入。
 5. 更新/删除受影响的测试文件。
 6. 验证：现有单次推理测试全部通过。

@@ -97,7 +97,7 @@ Calibrate an LLM-as-Judge with a small amount of human annotation. Once the Judg
 - **Privacy**: `.env` and `data/` are excluded from Git by default; never commit API keys, chat history, or a real persona
 - **Permissions**: Enable Screen Recording and Accessibility for your terminal (System Settings → Privacy & Security)
 - **Run**: `python3 run_bot.py`
-- **Test**: Install development dependencies with `pip install -r requirements-dev.txt`, then run `python3 -m pytest src/tests -v`
+- **Test**: Install development dependencies with `pip install -r requirements-dev.txt`, then run `python3 -m pytest rpa/tests -v`
 
 For detailed setup, see `docs/01-quickstart/AI_QUICKSTART.md`.
 
@@ -135,7 +135,7 @@ For detailed setup, see `docs/01-quickstart/AI_QUICKSTART.md`.
 
 ```
 wechat-mac-rpa/
-├── src/
+├── rpa/
 │   ├── bot/               # Main loop orchestration
 │   ├── perception/        # SmartPipeline / VisionPipeline
 │   ├── memory/            # Three-layer memory (Working/Session/Long-term)

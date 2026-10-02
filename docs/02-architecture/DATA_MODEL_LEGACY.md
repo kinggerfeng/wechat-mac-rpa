@@ -101,7 +101,7 @@
 ```
 
 - `GlobalStore` 保留现有接口作为内存缓冲。
-- 新增 `ChatHistoryRepository`（`src/memory/chat_history_repo.py`），负责把 `GlobalStore` 中的消息同步到 SQLite。
+- 新增 `ChatHistoryRepository`（`rpa/memory/chat_history_repo.py`），负责把 `GlobalStore` 中的消息同步到 SQLite。
 - 每次 `GlobalStore.save()` 时，把新增/变更的消息批量写入 `messages` 表。
 - 启动时从数据库加载历史到 `GlobalStore`，恢复内存状态。
 
@@ -149,10 +149,10 @@
 
 ## 10. 实施步骤
 
-1. 新增 `src/memory/chat_history_repo.py`：模型定义、upsert、查询接口。
-2. 新增 `src/memory/chat_history_migrate.py`：从 JSON/导出文件迁移历史。
-3. 修改 `src/session/global_store.py`：在 `save()` 中同步写入 DB；在 `_load()` 中支持 DB 回退。
-4. 修改 `src/models/base.py` 的 `ChatMessage`：新增 `chatroom_id` 字段。
+1. 新增 `rpa/memory/chat_history_repo.py`：模型定义、upsert、查询接口。
+2. 新增 `rpa/memory/chat_history_migrate.py`：从 JSON/导出文件迁移历史。
+3. 修改 `rpa/session/global_store.py`：在 `save()` 中同步写入 DB；在 `_load()` 中支持 DB 回退。
+4. 修改 `rpa/models/base.py` 的 `ChatMessage`：新增 `chatroom_id` 字段。
 5. 新增 `scripts/migrate_chats_to_db.py` 命令行工具。
 6. 更新 `requirements.txt` 加入 `sqlalchemy>=2.0.0`。
 7. 写测试覆盖 upsert、去重、同名群过滤。

@@ -38,14 +38,14 @@
 
 ```
 文档描述（ARCHITECTURE.md）:        实际代码:
-src/layout/layout_parser.py   ❌ 不存在
-src/message/extractor.py      ❌ 不存在
-src/reply/policy.py           ❌ 不存在
-src/reply/generator.py        ❌ 不存在
+rpa/layout/layout_parser.py   ❌ 不存在
+rpa/message/extractor.py      ❌ 不存在
+rpa/reply/policy.py           ❌ 不存在
+rpa/reply/generator.py        ❌ 不存在
 
 实际存在:
-src/parser/wechat_parser.py   ✅ 统一处理解析
-src/action/reply_generator.py ✅ 策略与生成混在一起
+rpa/parser/wechat_parser.py   ✅ 统一处理解析
+rpa/action/reply_generator.py ✅ 策略与生成混在一起
 ```
 
 **影响**：
@@ -75,7 +75,7 @@ src/action/reply_generator.py ✅ 策略与生成混在一起
 ### 2.1 魔法数字与硬编码
 
 ```python
-# src/layout/profile.py
+# rpa/layout/profile.py
 TITLE_Y_MAX = 50              # 为什么是50？
 TITLE_X_MAX_RATIO = 0.70      # 为什么是0.70？
 INPUT_Y_MIN = 1160            # 为什么是1160？

@@ -56,5 +56,5 @@ Tesseract 未安装时跳过验证，不阻断主流程。
 | `CaptureValidationError` | 截图内容不像微信窗口 | 提示可能有其他窗口覆盖 |
 
 ## 7. 依赖关系
-- 依赖 `src.models.base.Rect`
-- 依赖 `src.action.login_recovery.WeChatLoginHandler`（可选）
+- 依赖 `rpa.models.base.Rect`
+- 依赖 `rpa.action.login_recovery.WeChatLoginHandler`（可选）

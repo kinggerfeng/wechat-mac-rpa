@@ -130,8 +130,8 @@ self.tool_registry.register(
 
 ## 相关文件
 
-- `src/reply/generator.py` — 主要实现
-- `src/utils/qwen_client.py` — LLM 客户端（含 thinking: enabled）
+- `rpa/reply/generator.py` — 主要实现
+- `rpa/utils/qwen_client.py` — LLM 客户端（含 thinking: enabled）
 - `data/persona.md` — 角色私人人设（Git 忽略）
 - `prompts/persona_mode_detection.md` — 模式检测版人设
 

@@ -74,7 +74,7 @@ wechat-twin/                          # 项目根
 │   ├── schedule.py                   # 定时任务
 │   └── config.py                     # 全局配置
 │
-├── src/
+├── rpa/
 │   ├── models/                       # L1: 领域模型
 │   │   ├── message.py                # ChatMessage, SenderType
 │   │   ├── perception.py             # PerceptionResult
@@ -208,10 +208,10 @@ prompt_versions     -- prompt 版本历史
 ### 4.3 Benchmark-First
 
 项目第一天就有完整的 benchmark 体系：
-- `src/bench/runner.py`: 统一跑所有 benchmark
-- `src/bench/cases.py`: 从 DB 加载 case，不从代码读
-- `src/bench/report.py`: HTML Dashboard
-- `src/bench/monitor.py`: 每 3h 自动监控
+- `rpa/bench/runner.py`: 统一跑所有 benchmark
+- `rpa/bench/cases.py`: 从 DB 加载 case，不从代码读
+- `rpa/bench/report.py`: HTML Dashboard
+- `rpa/bench/monitor.py`: 每 3h 自动监控
 
 新增 case：`INSERT INTO bench_reply_cases (...) VALUES (...)`，不需要改代码。
 
@@ -295,7 +295,7 @@ DT 特有维度:
 | system prompt 在代码里 | `data/persona.md` |
 | benchmark case 硬编码 | 全部在 DB |
 | `judge_worker.py` 含 prompt 模板 | `prompts/judge.md` 独立 |
-| 三个不同的 LLM client | 统一 `src/utils/llm.py` |
+| 三个不同的 LLM client | 统一 `rpa/utils/llm.py` |
 | `MemoryEngine` 500 行 | 拆成 wiki + search + aliases |
 | VisionPipeline vs SmartPipeline 重复 | 统一为 `smart_pipeline.py` |
 | 多处硬编码路径 | 全部相对路径 + 配置文件 |

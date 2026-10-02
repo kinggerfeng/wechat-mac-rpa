@@ -124,18 +124,18 @@ normalize_chat_name(name: str) -> str
 
 ## 7. 依赖关系
 - 依赖 LLM 客户端（wiki 更新 / lint 时）
-- 被 `src.bot.WeChatBot` 和 `src.reply.generator.ReplyGenerator` 调用
-- `scripts/sanitize_aliases.py` 一次性迁移脚本（已应用）
-- `scripts/lint_memory.py` 定期 lint 脚本（待实现）
+- 被 `rpa.bot.WeChatBot` 和 `rpa.reply.generator.ReplyGenerator` 调用
+- `tools/data/sanitize_aliases.py` 一次性迁移脚本（已应用）
+- `tools/wiki/lint_memory.py` 定期 lint 脚本（待实现）
 
 ## 8. 重构进度
 
 - ✅ P0-A: 别名拆分+校验+清洗（FR-9~12），1217→1039 别名，"示例别名辛"召回修复
 - ✅ P0-B: wiki 膨胀（FR-1/2, NFR-2/3）— prompt 修订（编译摘要非流水账）+ `enforce_wiki_limits` 代码护栏
-- ✅ P1 Lint 操作（FR-7/8）— `lint_memory()` + `scripts/lint_memory.py`，首次报告清零
+- ✅ P1 Lint 操作（FR-7/8）— `lint_memory()` + `tools/wiki/lint_memory.py`，首次报告清零
 - ✅ P1 别名冲突裁决 — `scripts/resolve_alias_conflicts.py`，21 冲突→0，删 62 脏/幽灵主名
 - ✅ P1 wiki 截断 — 阈值统一为 4000 字（与 NFR-2/3 一致），152 个超限文件截断（备份在 `.lint-bak`）
-- ✅ P1 cases.db 清理（NFR-5）— `scripts/cleanup_cases_db.py`，2.86GB→1.5GB（删 7 天前 + VACUUM）；bot 写入改为只存最近 50 条上下文（原存全量 2078 条/927KB）
+- ✅ P1 cases.db 清理（NFR-5）— `tools/data/cleanup_cases_db.py`，2.86GB→1.5GB（删 7 天前 + VACUUM）；bot 写入改为只存最近 50 条上下文（原存全量 2078 条/927KB）
 - ✅ P1 归一化+广告拦截（FR-13/14）— `normalize_chat_name` + 斤价模式不入库
 - ✅ P2: humor RAG 移除 — `MessageVectorIndex`（TF-IDF）索引已废弃、静默失效，删除 generator 注入逻辑与 vector_index.py 的 MessageVectorIndex 类；历史原文检索统一由 `search_history`（BGE dense + keyword 两路融合，见 history_search.py）承担
 - ✅ 召回质量 — 人名查询时 user wiki ×1.3 boost（避免 group wiki BM25 挤占），benchmark 5 个 known_issue 修 4 个；剩 multi_example_relation 是 wiki 内容缺失（示例用户丁 wiki 未提示例用户庚）非排序问题

@@ -7,7 +7,7 @@
 
 ## L1: Domain Models
 
-### `src/models/base.py`
+### `rpa/models/base.py`
 
 **定位**: L1 领域模型
 
@@ -95,7 +95,7 @@ class PerceptionResult:
 
 ## L2: Capture / OCR
 
-### `src/capture/window_capture.py`
+### `rpa/capture/window_capture.py`
 
 **定位**: L2 窗口截图
 
@@ -147,7 +147,7 @@ class WindowCapture:
 
 ---
 
-### `src/ocr/vision_ocr.py`
+### `rpa/ocr/vision_ocr.py`
 
 **定位**: L2 OCR 引擎
 
@@ -178,7 +178,7 @@ VisionOCR = VisionOCREngine
 
 ## L3: Layout / Message
 
-### `src/layout/profile.py`
+### `rpa/layout/profile.py`
 
 **定位**: L2 布局配置
 
@@ -211,7 +211,7 @@ PROFILE_WECHAT_MAC_1760X1280: LayoutProfile
 
 ---
 
-### `src/layout/layout_parser.py`
+### `rpa/layout/layout_parser.py`
 
 **定位**: L3 布局分组
 
@@ -250,7 +250,7 @@ class LayoutParser:
 
 ---
 
-### `src/message/extractor.py`
+### `rpa/message/extractor.py`
 
 **定位**: L3 消息提取
 
@@ -286,7 +286,7 @@ class MessageExtractor:
 
 ## L3.5: Perception
 
-### `src/perception/smart_pipeline.py`
+### `rpa/perception/smart_pipeline.py`
 
 **定位**: L3.5 智能感知管道（主力）
 
@@ -339,7 +339,7 @@ class SmartPerceptionPipeline:
 
 ---
 
-### `src/perception/vision_pipeline.py`
+### `rpa/perception/vision_pipeline.py`
 
 **定位**: L3.5 视觉感知管道（备用回退）
 
@@ -358,7 +358,7 @@ class VisionPipeline:
 
 ## L4: Session / Reply / Action / Memory / Tools
 
-### `src/session/global_store.py`
+### `rpa/session/global_store.py`
 
 **定位**: L4 全局消息存储
 
@@ -424,7 +424,7 @@ class GlobalStore:
 
 ---
 
-### `src/reply/generator.py`
+### `rpa/reply/generator.py`
 
 **定位**: L4 回复生成
 
@@ -461,7 +461,7 @@ class ReplyGenerator:
 
 ---
 
-### `src/reply/policy.py`
+### `rpa/reply/policy.py`
 
 **定位**: L4 回复决策
 
@@ -478,7 +478,7 @@ class ReplyPolicy:
 
 ---
 
-### `src/reply/session_memory.py`
+### `rpa/reply/session_memory.py`
 
 **定位**: L4 跨 tick 短期记忆（工具缓存）
 
@@ -542,7 +542,7 @@ class SessionMemory:
 
 ---
 
-### `src/memory/engine.py`
+### `rpa/memory/engine.py`
 
 **定位**: L4 长期记忆引擎（LLM Wiki）
 
@@ -605,7 +605,7 @@ class MemoryEngine:
 
 ---
 
-### `src/tools/tool_registry.py`
+### `rpa/tools/tool_registry.py`
 
 **定位**: L4 工具注册表
 
@@ -639,7 +639,7 @@ def get_registry() -> ToolRegistry:
 
 ---
 
-### `src/action/message_sender.py`
+### `rpa/action/message_sender.py`
 
 **定位**: L4 动作层 — 消息发送
 
@@ -684,7 +684,7 @@ class WeChatMessageSender(MessageSender):
 
 ---
 
-### `src/action/chat_list_clicker.py`
+### `rpa/action/chat_list_clicker.py`
 
 **定位**: L4 动作层 — 聊天列表点击
 
@@ -708,7 +708,7 @@ class ChatListClicker:
 
 ---
 
-### `src/action/login_recovery.py`
+### `rpa/action/login_recovery.py`
 
 **定位**: L4 动作层 — 登录恢复
 
@@ -756,7 +756,7 @@ class WeChatLoginHandler:
 
 ## L5: Bot
 
-### `src/bot/wechat_bot.py`
+### `rpa/bot/wechat_bot.py`
 
 **定位**: L5 主循环编排
 
@@ -801,7 +801,7 @@ class WeChatBot:
 
 ## LLM Clients
 
-### `src/llm/openclaw_client.py`
+### `rpa/llm/openclaw_client.py`
 
 **定位**: LLM 客户端 — OpenClaw / Kimi Code 代理
 
@@ -828,4 +828,4 @@ class OpenClawClient:
         """从 OpenClaw 配置文件自动读取 base_url 和模型配置。"""
 ```
 
-> 注：`src/llm/qwen_client.py` 当前不存在于代码库中。实际生产环境使用 `OpenClawClient` 作为默认 LLM 客户端，SmartPerceptionPipeline 内部通过 `_QwenAPIClient` 私有类调用 qwen3.6-flash API。
+> 注：`rpa/llm/qwen_client.py` 当前不存在于代码库中。实际生产环境使用 `OpenClawClient` 作为默认 LLM 客户端，SmartPerceptionPipeline 内部通过 `_QwenAPIClient` 私有类调用 qwen3.6-flash API。

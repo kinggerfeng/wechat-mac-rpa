@@ -75,8 +75,8 @@ System prompt 明确告知 LLM：历史消息中标记为"我："的内容可能
 | hermes fallback 也失败 | 返回空列表 |
 
 ## 7. 依赖关系
-- 依赖 `src.models.base`
-- 依赖 `src.tools.tool_registry`
-- 依赖 `src.memory.engine.MemoryEngine`
-- 依赖 `src.reply.session_memory.SessionMemory`
-- 被 `src.bot.WeChatBot` 调用
+- 依赖 `rpa.models.base`
+- 依赖 `rpa.tools.tool_registry`
+- 依赖 `rpa.memory.engine.MemoryEngine`
+- 依赖 `rpa.reply.session_memory.SessionMemory`
+- 被 `rpa.bot.WeChatBot` 调用

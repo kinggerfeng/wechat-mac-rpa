@@ -61,5 +61,5 @@ key code 51                       # Delete
 | 回车发送失败 | 返回失败 |
 
 ## 7. 依赖关系
-- 依赖 `src.models.base.ActionResult, ChatListItem, Rect`
-- 被 `src.bot.WeChatBot` 调用
+- 依赖 `rpa.models.base.ActionResult, ChatListItem, Rect`
+- 被 `rpa.bot.WeChatBot` 调用

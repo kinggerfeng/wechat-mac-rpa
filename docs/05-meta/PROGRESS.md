@@ -101,5 +101,5 @@ wiki search_keyword 加 LLM rerank：BM25 召回 top10 后调 llm_client.chat �
 3. **本地 OCR 用途**：Layer3 快速预扫描（结构化完美，零成本）
 
 ### 代码变更
-- `scripts/benchmark_qwen_vl_ocr.py`：添加 `qwen3.5-flash` 模型选项、`--no-thinking` 参数、`extra_body` 支持
+- `tools/bench/benchmark_qwen_vl_ocr.py`：添加 `qwen3.5-flash` 模型选项、`--no-thinking` 参数、`extra_body` 支持
 - `scripts/run_thinking_top10.py`：新增，用于快速测试 thinking 模式

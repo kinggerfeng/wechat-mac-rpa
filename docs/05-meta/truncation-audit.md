@@ -408,10 +408,10 @@ return [str(r).strip() for r in replies if str(r).strip() not in ("收到", "好
 
 #### 已实现的工具：`extract_context_around_keywords`
 
-已在 `src/utils/text_utils.py` 中实现，核心逻辑：
+已在 `rpa/utils/text_utils.py` 中实现，核心逻辑：
 
 ```python
-from src.utils.text_utils import extract_context_around_keywords
+from rpa.utils.text_utils import extract_context_around_keywords
 
 # 示例：用户问"示例用户丙的年收入是多少"
 keywords = ["示例用户丙", "年收入", "工资", "薪水"]
@@ -446,7 +446,7 @@ result = extract_context_around_keywords(
 ### 3.3 阈值散落各处——缺乏统一配置
 
 `max_tokens=2000/256/1024/4096`、`max_chars=4000/6000/12000/2000` 等阈值散落在各个文件的硬编码中，没有统一配置中心。建议：
-- 创建 `src/config/limits.py` 统一存放所有截断阈值
+- 创建 `rpa/config/limits.py` 统一存放所有截断阈值
 - 支持环境变量覆盖
 
 ---
@@ -460,5 +460,5 @@ result = extract_context_around_keywords(
 - [ ] 5. 历史消息窗口从"条数限制"改为"token 预算限制"
 - [ ] 6. 超长网页正文引入摘要替代硬截断
 - [ ] 7. 超长 conversation 截断改为"保留头尾+摘要中间"
-- [ ] 8. 创建 `src/config/limits.py` 统一阈值配置
+- [ ] 8. 创建 `rpa/config/limits.py` 统一阈值配置
 - [ ] 9. wiki 记忆截断引入重要性分层

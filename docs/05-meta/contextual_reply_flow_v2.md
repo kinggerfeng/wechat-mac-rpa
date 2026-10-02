@@ -255,7 +255,7 @@ def _build_mode_hints(
 ## 七、实施路径
 
 1. **Step 1**：把"五关流程"写进 `data/persona.md`（本地 system prompt）。
-2. **Step 2**：在 `src/reply/generator.py` 实现 `_build_mode_hints` 并注入 `[语境速查]`。
+2. **Step 2**：在 `rpa/reply/generator.py` 实现 `_build_mode_hints` 并注入 `[语境速查]`。
 3. **Step 3**：用历史 20 条 tick 做 A/B 验证，看模式命中率。
 4. **Step 4**：根据验证结果调整 hints 关键词和模式表。
 5. **Step 5**：全量上线，观察 3 天真实回复质量。

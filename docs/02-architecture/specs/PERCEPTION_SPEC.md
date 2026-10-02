@@ -77,7 +77,7 @@ API prompt 中明确要求排除截图最底部的输入框区域（未发送草
 | WeFlow 失败且模式为 `hybrid` | Fallback 到 OCR |
 
 ## 7. 依赖关系
-- 依赖 `src.capture`, `src.ocr`, `src.layout`
-- 依赖 `src.utils.chat_utils._is_group_chat_name`
-- 依赖 `src.utils.xml_utils._extract_xml_text`
-- 被 `src.bot.WeChatBot` 调用
+- 依赖 `rpa.capture`, `rpa.ocr`, `rpa.layout`
+- 依赖 `rpa.utils.chat_utils._is_group_chat_name`
+- 依赖 `rpa.utils.xml_utils._extract_xml_text`
+- 被 `rpa.bot.WeChatBot` 调用

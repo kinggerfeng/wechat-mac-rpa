@@ -56,7 +56,7 @@ wechat-mac-rpa/
 
 ## 🎯 核心模块说明
 
-### src/bot/wechat_bot.py (主程序)
+### rpa/bot/wechat_bot.py (主程序)
 **功能**: L1-L5 模块化架构编排
 
 **核心类**:
@@ -192,7 +192,7 @@ pytest tests/test_real_scene_extraction.py tests/test_integration.py tests/test_
 ## 📝 关键配置
 
 ### 布局常量 (新架构)
-配置位于 `src/layout/profile.py`
+配置位于 `rpa/layout/profile.py`
 ```python
 PROFILE_WECHAT_MAC_1760X1280 = LayoutProfile(
     window_width=1760,

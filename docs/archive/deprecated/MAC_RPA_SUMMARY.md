@@ -1,6 +1,6 @@
 # Mac 微信 RPA 调研总结
 
-> **当前项目状态更新**：本项目已全面采用 **Vision OCR 视觉识别方案（L1-L5 模块化架构）**（无需关闭 SIP、无需数据库解密）。下文中的"数据库解密方案"仅作为技术调研背景保留，实际实现请参考 `src/bot/wechat_bot.py` 和 `ARCHITECTURE.md`。
+> **当前项目状态更新**：本项目已全面采用 **Vision OCR 视觉识别方案（L1-L5 模块化架构）**（无需关闭 SIP、无需数据库解密）。下文中的"数据库解密方案"仅作为技术调研背景保留，实际实现请参考 `rpa/bot/wechat_bot.py` 和 `ARCHITECTURE.md`。
 
 ## 🔍 调研结果
 
@@ -101,7 +101,7 @@ python3 simple_mac_bot.py
 
 ```
 wechat-mac-rpa/
-├── ✅ src/bot/wechat_bot.py         # Vision OCR 全自动机器人（当前唯一版本）
+├── ✅ rpa/bot/wechat_bot.py         # Vision OCR 全自动机器人（当前唯一版本）
 ├── ✅ tests/test_real_scene_extraction.py  # 真实场景回归测试
 ├── ✅ examples/simple_mac_bot.py           # 简易版（可用）
 ├── ✅ ARCHITECTURE.md                      # 模块化架构文档
@@ -116,7 +116,7 @@ wechat-mac-rpa/
 → 用当前的 `simple_mac_bot.py`，手动输入消息，AI 自动回复到微信
 
 **需要全自动机器人**
-→ 使用 `src/bot/wechat_bot.py`（当前唯一维护版本）
+→ 使用 `rpa/bot/wechat_bot.py`（当前唯一维护版本）
 > ⚠️ 数据库解密方案（方案 B）已被本项目废弃，请勿关闭 SIP。
 
 **有 Windows 电脑**

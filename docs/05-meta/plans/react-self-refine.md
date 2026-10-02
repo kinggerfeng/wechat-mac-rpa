@@ -4,7 +4,7 @@
 
 **目标：** 在现有 ReAct 工具循环基础上增加 `think` 工具、Self-Refine（Feedback + Iterate）质量门、完整可观测性，并清理 Hermes / 两步推理 / session_memory 死代码。
 
-**架构：** 保留 `src/reply/generator.py` 现有 ReAct 循环，注册 `think` 工具并提高 `max_tokens`；生成后追加 Feedback 调用，发现问题时进行 Iterate 修正；所有调用使用 `deepseek-v4-flash` 并保留 `reasoning_content`；最终通过 `tick_log` 记录完整多轮轨迹。
+**架构：** 保留 `rpa/reply/generator.py` 现有 ReAct 循环，注册 `think` 工具并提高 `max_tokens`；生成后追加 Feedback 调用，发现问题时进行 Iterate 修正；所有调用使用 `deepseek-v4-flash` 并保留 `reasoning_content`；最终通过 `tick_log` 记录完整多轮轨迹。
 
 **技术栈：** Python 3.10, OpenAI SDK, SQLite, pytest
 
@@ -14,28 +14,28 @@
 
 | 文件 | 职责 |
 |---|---|
-| `src/reply/generator.py` | 核心实现：ReAct 循环改造、Self-Refine、观测字段 |
-| `src/utils/qwen_client.py` | 确保 `reasoning_content` 透传，不删除 messages 字段 |
-| `src/reply/session_memory.py` | 删除 `bot_replies` 死代码，保留工具缓存 |
-| `src/bot/wechat_bot.py` | 删除 `complex_llm_client` 传入，发送成功后记录 bot 回复 |
-| `src/logging/tick_logger.py` 或相关 tick_log 写入代码 | 新增 Self-Refine 相关字段 |
+| `rpa/reply/generator.py` | 核心实现：ReAct 循环改造、Self-Refine、观测字段 |
+| `rpa/utils/qwen_client.py` | 确保 `reasoning_content` 透传，不删除 messages 字段 |
+| `rpa/reply/session_memory.py` | 删除 `bot_replies` 死代码，保留工具缓存 |
+| `rpa/bot/wechat_bot.py` | 删除 `complex_llm_client` 传入，发送成功后记录 bot 回复 |
+| `rpa/logging/tick_logger.py` 或相关 tick_log 写入代码 | 新增 Self-Refine 相关字段 |
 | `data/persona.md` | 删除输出格式段，改为允许思考 |
 | `prompts/feedback.md` | 新增 Feedback 专用 prompt |
 | `prompts/iterate.md` | 新增 Iterate 专用 prompt |
 | `prompts/reply_format.txt` | 生成阶段追加的格式指令 |
-| `src/tests/test_session_memory.py` | 删除 bot_replies 相关测试 |
+| `rpa/tests/test_session_memory.py` | 删除 bot_replies 相关测试 |
 | `tests_integration/test_hermes_integration.py` | 删除或重构为 ReAct 测试 |
-| `src/tests/test_reply_generator.py` | 更新或新增 ReAct/Self-Refine 测试 |
+| `rpa/tests/test_reply_generator.py` | 更新或新增 ReAct/Self-Refine 测试 |
 
 ---
 
 ## 任务 1：清理 Hermes 相关代码
 
 **文件：**
-- 修改：`src/reply/generator.py`
-- 修改：`src/bot/wechat_bot.py`
+- 修改：`rpa/reply/generator.py`
+- 修改：`rpa/bot/wechat_bot.py`
 - 删除：`tests_integration/test_hermes_integration.py`
-- 测试：`src/tests/test_reply_generator.py`
+- 测试：`rpa/tests/test_reply_generator.py`
 
 ### 步骤 1：删除 `ReplyGenerator.__init__` 中的 `complex_llm_client`
 
@@ -58,7 +58,7 @@ class ReplyGenerator:
 
 ### 步骤 2：删除 Hermes fallback 相关方法
 
-在 `src/reply/generator.py` 中删除：
+在 `rpa/reply/generator.py` 中删除：
 - `_hermes_system_prompt()`
 - `last_hermes_fallback_triggered`
 - `last_hermes_messages`
@@ -68,7 +68,7 @@ class ReplyGenerator:
 ### 步骤 3：删除 `wechat_bot.py` 中的 `complex_llm_client` 传入
 
 ```python
-# src/bot/wechat_bot.py 第 83-85 行
+# rpa/bot/wechat_bot.py 第 83-85 行
 self.generator = ReplyGenerator(
     llm_client=actual_llm,
     memory_engine=self.memory_engine,
@@ -88,7 +88,7 @@ rm tests_integration/test_hermes_integration.py
 
 ```bash
 cd /Users/yourname/wechat-mac-rpa
-pytest src/tests/test_reply_generator.py -v
+pytest rpa/tests/test_reply_generator.py -v
 pytest tests_integration/ -v --ignore=tests_integration/test_hermes_integration.py
 ```
 
@@ -97,7 +97,7 @@ pytest tests_integration/ -v --ignore=tests_integration/test_hermes_integration.
 ### 步骤 6：Commit
 
 ```bash
-git add src/reply/generator.py src/bot/wechat_bot.py tests_integration/
+git add rpa/reply/generator.py rpa/bot/wechat_bot.py tests_integration/
 git commit -m "refactor(reply): remove Hermes fallback path"
 ```
 
@@ -106,12 +106,12 @@ git commit -m "refactor(reply): remove Hermes fallback path"
 ## 任务 2：清理两步推理代码
 
 **文件：**
-- 修改：`src/reply/generator.py`
+- 修改：`rpa/reply/generator.py`
 - 删除：`scripts/test_twostep_offline.py`
 
 ### 步骤 1：删除两步推理方法
 
-在 `src/reply/generator.py` 中删除：
+在 `rpa/reply/generator.py` 中删除：
 - `_should_use_two_step()`
 - `_deep_analysis()`
 - `_plan_analysis()`
@@ -127,7 +127,7 @@ rm scripts/test_twostep_offline.py
 ### 步骤 3：运行测试
 
 ```bash
-pytest src/tests/test_reply_generator.py -v
+pytest rpa/tests/test_reply_generator.py -v
 ```
 
 预期：通过。
@@ -135,7 +135,7 @@ pytest src/tests/test_reply_generator.py -v
 ### 步骤 4：Commit
 
 ```bash
-git add src/reply/generator.py scripts/test_twostep_offline.py
+git add rpa/reply/generator.py scripts/test_twostep_offline.py
 git commit -m "refactor(reply): remove two-step reasoning prototype"
 ```
 
@@ -144,14 +144,14 @@ git commit -m "refactor(reply): remove two-step reasoning prototype"
 ## 任务 3：清理 session_memory 死代码
 
 **文件：**
-- 修改：`src/reply/session_memory.py`
-- 修改：`src/reply/generator.py`
-- 修改：`src/tests/test_session_memory.py`
+- 修改：`rpa/reply/session_memory.py`
+- 修改：`rpa/reply/generator.py`
+- 修改：`rpa/tests/test_session_memory.py`
 
 ### 步骤 1：删除 `SessionSnapshot` 中的 bot_replies 相关代码
 
 ```python
-# src/reply/session_memory.py
+# rpa/reply/session_memory.py
 @dataclass
 class SessionSnapshot:
     chat_name: str
@@ -167,7 +167,7 @@ class SessionSnapshot:
 ### 步骤 2：删除 `SessionMemory` 中的 bot_replies 方法
 
 ```python
-# src/reply/session_memory.py
+# rpa/reply/session_memory.py
 class SessionMemory:
     # 删除 add_reply 方法
     # 删除 get_recent_replies 方法
@@ -176,22 +176,22 @@ class SessionMemory:
 ### 步骤 3：删除 generator.py 中的 add_reply 调用
 
 ```python
-# src/reply/generator.py
+# rpa/reply/generator.py
 # 删除所有 self.session_memory.add_reply(chat_name, r) 调用
 ```
 
 ### 步骤 4：更新 test_session_memory.py
 
 ```python
-# src/tests/test_session_memory.py
+# rpa/tests/test_session_memory.py
 # 删除测试 add_reply / get_recent_replies 的 case
 ```
 
 ### 步骤 5：运行测试
 
 ```bash
-pytest src/tests/test_session_memory.py -v
-pytest src/tests/test_reply_generator.py -v
+pytest rpa/tests/test_session_memory.py -v
+pytest rpa/tests/test_reply_generator.py -v
 ```
 
 预期：通过。
@@ -199,7 +199,7 @@ pytest src/tests/test_reply_generator.py -v
 ### 步骤 6：Commit
 
 ```bash
-git add src/reply/session_memory.py src/reply/generator.py src/tests/test_session_memory.py
+git add rpa/reply/session_memory.py rpa/reply/generator.py rpa/tests/test_session_memory.py
 git commit -m "refactor(session_memory): remove dead bot_replies code"
 ```
 
@@ -208,8 +208,8 @@ git commit -m "refactor(session_memory): remove dead bot_replies code"
 ## 任务 4：修复 bot 回复记录时机（发送成功后才记录）
 
 **文件：**
-- 修改：`src/reply/generator.py`
-- 修改：`src/bot/wechat_bot.py`
+- 修改：`rpa/reply/generator.py`
+- 修改：`rpa/bot/wechat_bot.py`
 
 ### 步骤 1：从 generator.py 中移除 add_reply 调用
 
@@ -218,7 +218,7 @@ git commit -m "refactor(session_memory): remove dead bot_replies code"
 ### 步骤 2：在 wechat_bot.py 发送成功后记录 bot 回复
 
 ```python
-# src/bot/wechat_bot.py 第 537-550 行
+# rpa/bot/wechat_bot.py 第 537-550 行
 if action_result.success:
     self.logger.log_send(tick_id, success=True, text=reply)
     self.debug_logger.log_action("send", action_input=reply, success=True)
@@ -236,13 +236,13 @@ if action_result.success:
 ### 步骤 3：运行测试
 
 ```bash
-pytest src/tests/test_wechat_bot.py -v 2>/dev/null || pytest src/tests/ -k "wechat" -v
+pytest rpa/tests/test_wechat_bot.py -v 2>/dev/null || pytest rpa/tests/ -k "wechat" -v
 ```
 
 ### 步骤 4：Commit
 
 ```bash
-git add src/bot/wechat_bot.py
+git add rpa/bot/wechat_bot.py
 git commit -m "fix(bot): record bot reply only after send success"
 ```
 
@@ -251,7 +251,7 @@ git commit -m "fix(bot): record bot reply only after send success"
 ## 任务 5：添加 think 工具和 ReAct 循环增强
 
 **文件：**
-- 修改：`src/reply/generator.py`
+- 修改：`rpa/reply/generator.py`
 - 创建：`prompts/reply_format.txt`
 
 ### 步骤 1：注册 think 工具
@@ -259,7 +259,7 @@ git commit -m "fix(bot): record bot reply only after send success"
 在 `ReplyGenerator.__init__` 中注册：
 
 ```python
-# src/reply/generator.py
+# rpa/reply/generator.py
 self.tool_registry.register(
     name="think",
     description=(
@@ -284,7 +284,7 @@ self.tool_registry.register(
 ### 步骤 2：在 ReAct 循环中处理 think 工具
 
 ```python
-# src/reply/generator.py 现有工具执行循环内
+# rpa/reply/generator.py 现有工具执行循环内
 for tc in raw_tool_calls:
     tool_name = tc.function.name
     tool_args = tc.function.arguments
@@ -307,7 +307,7 @@ for tc in raw_tool_calls:
 ### 步骤 3：提高 max_tokens 并增加 max_tool_calls
 
 ```python
-# src/reply/generator.py
+# rpa/reply/generator.py
 MAX_TOOL_CALLS = 10
 
 # 在循环调用处
@@ -331,7 +331,7 @@ EOF
 ### 步骤 5：在 user_prompt 末尾追加格式指令
 
 ```python
-# src/reply/generator.py 中 _build_user_prompt 或 generate 末尾
+# rpa/reply/generator.py 中 _build_user_prompt 或 generate 末尾
 reply_format = Path(__file__).parent.parent.parent / "prompts" / "reply_format.txt"
 if reply_format.exists():
     user_prompt += "\n\n" + reply_format.read_text()
@@ -340,13 +340,13 @@ if reply_format.exists():
 ### 步骤 6：运行测试
 
 ```bash
-pytest src/tests/test_reply_generator.py -v
+pytest rpa/tests/test_reply_generator.py -v
 ```
 
 ### 步骤 7：Commit
 
 ```bash
-git add src/reply/generator.py prompts/reply_format.txt
+git add rpa/reply/generator.py prompts/reply_format.txt
 git commit -m "feat(reply): add think tool and raise max_tokens to 10000"
 ```
 
@@ -407,7 +407,7 @@ git commit -m "feat(prompts): add feedback and iterate prompts"
 ## 任务 7：实现 Self-Refine（Feedback + Iterate）
 
 **文件：**
-- 修改：`src/reply/generator.py`
+- 修改：`rpa/reply/generator.py`
 
 ### 步骤 1：读取 prompt 文件
 
@@ -539,13 +539,13 @@ def generate(self, unreplied, all_messages, is_group=False, tick_id=None) -> Lis
 ### 步骤 6：运行测试
 
 ```bash
-pytest src/tests/test_reply_generator.py -v
+pytest rpa/tests/test_reply_generator.py -v
 ```
 
 ### 步骤 7：Commit
 
 ```bash
-git add src/reply/generator.py
+git add rpa/reply/generator.py
 git commit -m "feat(reply): implement Self-Refine feedback and iterate"
 ```
 
@@ -555,7 +555,7 @@ git commit -m "feat(reply): implement Self-Refine feedback and iterate"
 
 **文件：**
 - 修改：tick_log 写入代码（需先定位）
-- 修改：`src/reply/generator.py`
+- 修改：`rpa/reply/generator.py`
 
 ### 步骤 1：定位 tick_log 写入代码
 
@@ -565,7 +565,7 @@ grep -rn "tick_log" /Users/yourname/wechat-mac-rpa/src --include="*.py" | head -
 
 ### 步骤 2：修改 tick_log 表结构
 
-假设 tick_log 写入在 `src/bot/wechat_bot.py` 或 `src/logging/` 中，执行类似：
+假设 tick_log 写入在 `rpa/bot/wechat_bot.py` 或 `rpa/logging/` 中，执行类似：
 
 ```sql
 ALTER TABLE tick_log ADD COLUMN self_refine_applied INTEGER DEFAULT 0;
@@ -597,13 +597,13 @@ cursor.execute("""
 ### 步骤 4：运行测试
 
 ```bash
-pytest src/tests/ -v
+pytest rpa/tests/ -v
 ```
 
 ### 步骤 5：Commit
 
 ```bash
-git add src/bot/wechat_bot.py src/logging/
+git add rpa/bot/wechat_bot.py rpa/logging/
 git commit -m "feat(logging): add Self-Refine trace fields to tick_log"
 ```
 
@@ -636,7 +636,7 @@ git commit -m "feat(prompts): allow thinking in persona"
 ## 任务 10：单元测试覆盖
 
 **文件：**
-- 创建：`src/tests/test_react_self_refine.py`
+- 创建：`rpa/tests/test_react_self_refine.py`
 
 ### 步骤 1：测试 think 工具注册
 
@@ -701,13 +701,13 @@ def test_self_refine_disabled(mock_llm):
 ### 步骤 6：运行测试
 
 ```bash
-pytest src/tests/test_react_self_refine.py -v
+pytest rpa/tests/test_react_self_refine.py -v
 ```
 
 ### 步骤 7：Commit
 
 ```bash
-git add src/tests/test_react_self_refine.py
+git add rpa/tests/test_react_self_refine.py
 git commit -m "test(reply): add ReAct + Self-Refine unit tests"
 ```
 

@@ -161,7 +161,7 @@ onMounted(() => void load());
       show-icon
       :closable="false"
       title="当前环境不支持重新生成报告"
-      description="服务端没有找到生成脚本（如 scripts/generate_benchmark_dashboard.py），只能读取已落盘的文件。"
+      description="服务端没有找到生成脚本（如 tools/bench/generate_benchmark_dashboard.py），只能读取已落盘的文件。"
     />
 
     <el-skeleton v-if="loading && !hasReports" class="card skeleton" :rows="4" animated />
@@ -174,7 +174,7 @@ onMounted(() => void load());
       <el-empty v-else description="尚未生成任何报告">
         <p class="empty-body muted">
           报告不是实时算的：需要先在仓库根目录执行
-          <code class="mono">python3 scripts/generate_benchmark_dashboard.py</code>
+          <code class="mono">python3 tools/bench/generate_benchmark_dashboard.py</code>
           落盘，再回到本页刷新。
         </p>
         <el-button v-if="refreshable" type="primary" :loading="refreshing" @click="refresh">

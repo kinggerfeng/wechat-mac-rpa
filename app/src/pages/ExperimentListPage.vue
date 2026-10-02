@@ -148,7 +148,7 @@ onMounted(() => void load());
       <el-empty description="没有实验记录">
         <p class="empty-body muted">
           实验由批处理脚本写入：在仓库根目录执行
-          <code class="mono">python3 scripts/run_experiment.py --exp &lt;名称&gt; --all-labeled</code>
+          <code class="mono">python3 tools/bench/run_experiment.py --exp &lt;名称&gt; --all-labeled</code>
           后回到本页刷新。
         </p>
         <el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button>

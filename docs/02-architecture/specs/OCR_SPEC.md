@@ -51,5 +51,5 @@ y = (1.0 - vy - vh) * image_height
 | 加载失败 / 请求失败 | CGImage 或 Vision 请求失败 | 返回空列表，记录 warning |
 
 ## 7. 依赖关系
-- 依赖 `src.models.base.OCRTextElement, Point, Rect`
+- 依赖 `rpa.models.base.OCRTextElement, Point, Rect`
 - 依赖 macOS Vision / Quartz / AppKit 框架

@@ -19,7 +19,7 @@ This document outlines how to contribute to the project.
 2. **Clone** your fork: `git clone https://github.com/<your-username>/wechat-mac-rpa.git`
 3. **Create a branch**: `git checkout -b feature/your-feature-name`
 4. **Make your changes**
-5. **Run tests**: `python3 -m pytest src/tests -v`
+5. **Run tests**: `python3 -m pytest rpa/tests -v`
 6. **Commit**: Use clear, descriptive commit messages
 7. **Push** and open a Pull Request
 
@@ -42,7 +42,7 @@ cp .env.example .env
 # Edit .env with your API keys
 
 # Run tests
-python3 -m pytest src/tests/ -v
+python3 -m pytest rpa/tests/ -v
 ```
 
 ## Code Style

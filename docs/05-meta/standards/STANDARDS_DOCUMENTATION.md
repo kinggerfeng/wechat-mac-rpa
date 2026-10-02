@@ -71,11 +71,11 @@
 
 | 标签 | 含义 | 示例 |
 |------|------|------|
-| **🚧 未实现** | 仅设计/规划阶段，代码不存在或为空壳 | `src/perception/vision_pipeline.py` |
-| **📝 开发中** | 代码已部分实现，但尚未完成或不稳定 | `src/layout/` 拆分 |
+| **🚧 未实现** | 仅设计/规划阶段，代码不存在或为空壳 | `rpa/perception/vision_pipeline.py` |
+| **📝 开发中** | 代码已部分实现，但尚未完成或不稳定 | `rpa/layout/` 拆分 |
 | **✅ 开发完成** | 代码已实现，但尚未通过完整测试 | 新模块刚合并到 feature branch |
 | **🧪 测试完成** | 已通过测试，但尚未合并到主分支/线上 | CI 全绿待 review |
-| **🚀 已上线** | 已在主分支/生产环境稳定运行 | `src/bot/wechat_bot.py` |
+| **🚀 已上线** | 已在主分支/生产环境稳定运行 | `rpa/bot/wechat_bot.py` |
 
 **适用场景**：
 - `ARCHITECTURE.md`、`API_SURFACE.md`、`MODULE_INDEX.md` 等目标架构文档 → 必须标注 "⚠️ 目标重构架构（Target Architecture），当前实际代码与此存在差异"
@@ -95,7 +95,7 @@
 
 1. **运行自动化检查脚本**（不可跳过）：
    ```bash
-   python3 scripts/doc_lint.py
+   python3 tools/ops/doc_lint.py
    ```
    如果脚本报错，必须修复文档直到全绿，才能提交。
 

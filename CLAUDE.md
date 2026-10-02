@@ -43,21 +43,27 @@
 ## 项目速查
 
 ```
-src/bot/wechat_bot.py          # L5 主循环
-src/flow/                      # RPA 编排引擎（新增，与 wechat_bot.py 并存不替换）
-  registry.py                  # 节点注册表，41 个节点
-  expr.py                      # ast 白名单表达式求值器（禁用 eval）
-  executor.py                  # 执行器
-  strategy.py                  # 双路径定位唯一入口 resolve()
-src/reply/generator.py         # L4 回复生成
-src/badcase/judge_worker.py    # Judge 评分
-src/perception/smart_pipeline.py # L3.5 感知
-src/memory/engine.py           # L4 记忆
-src/action/system_automation.py # RPA 原语 ABC（macOS 实现 + NoOp）
-src/capture/window_capture.py  # 窗口截图
-scripts/admin.py               # 管理后台 :8766
-data/persona.md                # Bot 私人人设（Git 忽略）
-data/rpa.db                    # RPA 域数据（不与 cases.db 混用）
+rpa/                             # 单一 Python 包（源码根，非 src-layout）
+  bot/wechat_bot.py              # L5 主循环
+  flow/                          # RPA 编排引擎（与 wechat_bot.py 并存不替换）
+    registry.py                  # 节点注册表，74 个节点
+    expr.py                      # ast 白名单表达式求值器（禁用 eval）
+    executor.py                  # 执行器
+    strategy.py                  # 双路径定位唯一入口 resolve()
+  backend/                       # 桌面 API（FastAPI，Tauri 以 uvicorn 拉起）
+    app.py rpa_api.py cases_api.py record_api.py
+  db/                            # 聊天记录 SQLite（唯一权威源）
+  reply/generator.py             # L4 回复生成
+  badcase/judge_worker.py        # Judge 评分
+  perception/smart_pipeline.py   # L3.5 感知
+  memory/engine.py               # L4 记忆
+  action/system_automation.py    # RPA 原语 ABC（macOS 实现 + NoOp）
+  capture/window_capture.py      # 窗口截图
+tests/                           # 统一测试入口（tests/e2e 需真机）
+tools/                           # 一次性脚本，按域分 bench/data/persona/wiki/ops/server
+  server/admin.py                # 旧开发者后台 :8766（待退役，勿在新文档引用）
+data/persona.md                  # Bot 私人人设（Git 忽略）
+data/rpa.db                      # RPA 域数据（不与 cases.db 混用）
 ```
 
 ## 规则分层
@@ -66,4 +72,4 @@ data/rpa.db                    # RPA 域数据（不与 cases.db 混用）
 |------|---------|------|
 | `CLAUDE.md` | 每次会话 | 核心铁律 + 速查 |
 | `.claude/rules/frontend.md` | 改 admin.py 时 | Playwright 验证 |
-| `.claude/rules/debugging.md` | 改 src/ 时 | 调试流程 + 常见坑 |
+| `.claude/rules/debugging.md` | 改 rpa/ 时 | 调试流程 + 常见坑 |

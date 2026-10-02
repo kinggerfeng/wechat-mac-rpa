@@ -90,7 +90,7 @@ if curr_hash == self._last_hash and self._last_result is not None:
     return self._last_result  # 直接返回缓存，零感知耗时
 ```
 
-**实施位置**: `src/perception/smart_pipeline.py`
+**实施位置**: `rpa/perception/smart_pipeline.py`
 
 ---
 
@@ -100,7 +100,7 @@ if curr_hash == self._last_hash and self._last_result is not None:
 
 **优化**：在 `ReplyGenerator.__init__` 中增加 `_skill_manifest_cache`，用目录 mtime 判断刷新。
 
-**实施位置**: `src/reply/generator.py`
+**实施位置**: `rpa/reply/generator.py`
 
 ---
 
@@ -108,7 +108,7 @@ if curr_hash == self._last_hash and self._last_result is not None:
 
 **优化方案 A**：每个 `SKILL.md` 头部增加 `## 触发关键词` 段落，本地匹配优先。
 
-**实施位置**: `src/reply/generator.py` + `skills/*.md`
+**实施位置**: `rpa/reply/generator.py` + `skills/*.md`
 
 ---
 
@@ -116,7 +116,7 @@ if curr_hash == self._last_hash and self._last_result is not None:
 
 **优化**：`MemoryEngine._load_wiki()` 增加 `(content, mtime)` 缓存。
 
-**实施位置**: `src/memory/engine.py`
+**实施位置**: `rpa/memory/engine.py`
 
 ---
 
@@ -130,7 +130,7 @@ if curr_hash == self._last_hash and self._last_result is not None:
 
 以下 profiling 点已在代码中植入，日志格式统一为 `[Perf][<模块>] <阶段>=<耗时>ms`。
 
-### 4.1 感知层 `src/perception/smart_pipeline.py`
+### 4.1 感知层 `rpa/perception/smart_pipeline.py`
 
 | 日志关键词 | 计时范围 | 说明 |
 |-----------|---------|------|
@@ -138,14 +138,14 @@ if curr_hash == self._last_hash and self._last_result is not None:
 | `[SmartPipeline] 本地处理完成: ocr=...ms layout=...ms` | `_run_local_only()` 内部 | OCR 和 Layout 分别计时 |
 | `[SmartPipeline] API请求成功: latency=...ms` | `_run_api_pipeline()` 网络耗时 | 纯 API 网络往返 |
 
-### 4.2 生成层 `src/reply/generator.py`
+### 4.2 生成层 `rpa/reply/generator.py`
 
 | 日志关键词 | 计时范围 | 说明 |
 |-----------|---------|------|
 | `[Perf][Generate] total=...ms sp=...ms tc=...ms up=...ms route=...ms llm=...ms parse=...ms` | `generate()` 内部子阶段 | system_prompt / tools_context / user_prompt / route_skills / LLM 调用 / parse_replies |
 | `[Perf][Memory] self=...ms other=...ms group=...ms mentions=...ms` | `_build_user_prompt()` 内部 memory 调用 | Bot wiki / 对方 wiki / 群 wiki / 相关人搜索 |
 
-### 4.3 发送层 `src/action/message_sender.py`
+### 4.3 发送层 `rpa/action/message_sender.py`
 
 | 日志关键词 | 计时范围 | 说明 |
 |-----------|---------|------|

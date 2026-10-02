@@ -62,7 +62,7 @@ is_group = _is_group_chat_name(raw_chat_name)    # 基于原始值判断
 - 群聊：同时更新群 wiki 和最后发言者 wiki
 
 ### 规则 5: 启动时自动同步 knowledge_source.md
-通过 `scripts/sync_knowledge.py` 同步外挂知识到 wiki 格式。
+通过 `tools/data/sync_knowledge.py` 同步外挂知识到 wiki 格式。
 
 ## 6. 错误处理
 
@@ -74,5 +74,5 @@ is_group = _is_group_chat_name(raw_chat_name)    # 基于原始值判断
 | 保存状态失败 | 记录 warning，不阻断 |
 
 ## 7. 依赖关系
-- 依赖 `src.perception`, `src.session`, `src.reply`, `src.action`, `src.memory`, `src.logging`
-- 依赖 `src.utils.chat_utils._is_group_chat_name, _normalize_chat_name`
+- 依赖 `rpa.perception`, `rpa.session`, `rpa.reply`, `rpa.action`, `rpa.memory`, `rpa.logging`
+- 依赖 `rpa.utils.chat_utils._is_group_chat_name, _normalize_chat_name`

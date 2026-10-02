@@ -9,9 +9,9 @@
 本项目的本质不是传统 Web 应用，而是一个基于 macOS 自动化能力、视觉感知、LLM 和本地记忆的机器人系统。核心逻辑已集中在：
 
 - [run_bot.py](run_bot.py)
-- [src/bot/wechat_bot.py](src/bot/wechat_bot.py)
-- [src/perception/smart_pipeline.py](src/perception/smart_pipeline.py)
-- [scripts/admin.py](scripts/admin.py)
+- [rpa/bot/wechat_bot.py](rpa/bot/wechat_bot.py)
+- [rpa/perception/smart_pipeline.py](rpa/perception/smart_pipeline.py)
+- [tools/server/admin.py](tools/server/admin.py)
 
 这些模块承载了：
 
@@ -125,7 +125,7 @@ graph LR
 ```text
 wechat-mac-rpa/
 ├─ app/                           # Tauri 前端（Vue + Element Plus）
-│  ├─ src/
+│  ├─ rpa/
 │  │  ├─ api/
 │  │  ├─ components/
 │  │  ├─ pages/
@@ -136,14 +136,14 @@ wechat-mac-rpa/
 │  ├─ vite.config.ts
 │  └─ index.html
 ├─ src-tauri/
-│  ├─ src/
+│  ├─ rpa/
 │  │  ├─ commands/
 │  │  ├─ services/
 │  │  ├─ lib.rs
 │  │  └─ main.rs
 │  ├─ Cargo.toml
 │  └─ tauri.conf.json
-├─ src/
+├─ rpa/
 │  ├─ bot/
 │  ├─ memory/
 │  ├─ perception/
@@ -202,7 +202,7 @@ wechat-mac-rpa/
 
 ### 6.2 Python local HTTP API
 
-保留现有 [scripts/admin.py](scripts/admin.py) 的 FastAPI 能力，并建议统一成下面接口：
+保留现有 [tools/server/admin.py](tools/server/admin.py) 的 FastAPI 能力，并建议统一成下面接口：
 
 - `GET /api/health`
 - `GET /api/status`
@@ -290,7 +290,7 @@ const status = await invoke('get_bot_status');
 目标：不改业务逻辑，先接通 UI 控制通道。
 
 任务：
-- 整理现有 [scripts/admin.py](scripts/admin.py) API
+- 整理现有 [tools/server/admin.py](tools/server/admin.py) API
 - 增加 `/api/status`, `/api/logs`, `/api/bot/start`, `/api/bot/stop`
 - 保证 Python 进程单例运行
 - 验证接口稳定
@@ -460,7 +460,7 @@ Tauri 应该在启动前暴露检查入口，例如：
 
 ### 阶段 2：搭建 Python backend API 层
 
-- 在 `python/backend/` 下实现基础 FastAPI app
+- 在 `rpa/backend/` 下实现基础 FastAPI app
 - 提供 `/api/health`、`/api/status`、`/api/logs`、`/api/bot/start` 与 `/api/bot/stop`
 - 统一日志目录与状态持久化路径
 - 桌面控制 API 使用 `127.0.0.1:8767`，与现有管理后台 `8766` 并行

@@ -59,5 +59,5 @@ except Exception as e:
 
 ## 7. 依赖关系
 - `builtin_tools.py` 依赖外部 API（天气、搜索、股票）
-- `search_memory` 依赖 `src.memory.engine.MemoryEngine`
-- 被 `src.reply.generator.ReplyGenerator` 调用
+- `search_memory` 依赖 `rpa.memory.engine.MemoryEngine`
+- 被 `rpa.reply.generator.ReplyGenerator` 调用

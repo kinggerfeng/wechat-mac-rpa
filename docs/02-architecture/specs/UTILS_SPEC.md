@@ -42,7 +42,7 @@ _compress_text(text: str, max_chars: int) -> str   # 保留头 40% + 尾 40%
 ### 规则 1: `_is_group_chat_name` 是群聊判断的唯一实现
 **禁止**在任何其他模块中重新定义群聊判断逻辑。所有模块必须从 `chat_utils` 导入：
 ```python
-from src.utils.chat_utils import _is_group_chat_name
+from rpa.utils.chat_utils import _is_group_chat_name
 ```
 违反此规则会导致感知层与存储层的群聊判断不一致（历史教训：eef109f commit 引入的 bug）。
 
@@ -57,5 +57,5 @@ from src.utils.chat_utils import _is_group_chat_name
 
 ## 7. 依赖关系
 - `chat_utils` / `xml_utils` / `text_utils` 只依赖标准库
-- `debug_logger` 依赖 `src.models.base`
+- `debug_logger` 依赖 `rpa.models.base`
 - 被几乎所有其他模块依赖

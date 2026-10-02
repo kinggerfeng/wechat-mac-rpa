@@ -1,0 +1,211 @@
+"""No executable file may still point at a retired tree.
+
+Three roots have been renamed in this reorganisation, and each one fails only
+where it is used rather than where it is written:
+
+* ``scripts/`` -> ``tools/{bench,data,persona,wiki,ops,server}``
+* ``src/`` -> ``rpa/``
+* ``rpa/backend/`` -> ``rpa/backend/``
+
+A stale reference is not a compile error. ``import scripts.sync_knowledge`` and
+``subprocess.run(["python3", "scripts/doc_lint.py"])`` both work right up to the
+moment the path is exercised, which for a nightly job can be days.
+
+Markdown is excluded on purpose. The docs under ``docs/`` are design records
+that also cite scripts which never existed (``scripts/view_ocr_history.py``,
+``scripts/build_index.py``); rewriting those would invent history. They are
+cleaned up as prose, not asserted here.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+#: Matched against the first path segment only. ``data`` belongs here and not
+#: in a set matched against every segment: ``tools/data/`` is a source directory
+#: that happens to share a name with the runtime ``data/`` tree, and the naive
+#: rule silently skipped 13 real files.
+SKIP_TOP = {".git", ".venv", "node_modules", "data", "third_party"}
+
+#: Matched against every segment — `node_modules` is nested under `app/`, so a
+#: first-segment rule would walk 7000 vendored files.
+SKIP_ANY = {"__pycache__", "node_modules", "target", "dist",
+            ".pytest_cache", ".mypy_cache"}
+
+#: The Vue app's owns the same word ``src/`` for a different tree entirely.
+#: Compared as whole segments, because the prefix ``"app/src"`` also matches
+#: ``app/src-tauri/``, which is the Rust crate that does need rewriting.
+SKIP_TREES = (("app", "src"), ("app", "dist"), ("app", "src-tauri", "target"))
+
+#: Only files that can break at run time. ``.rs`` is here because the Tauri
+#: shell is what launches the Python API — ``rpa.backend.app:app`` is a string
+#: the Rust binary passes to uvicorn, and nothing else would notice it rot.
+#: ``tests/`` is skipped so this test does not assert on its own source.
+CODE_SUFFIXES = {".py", ".sh", ".command", ".yml", ".yaml", ".toml", ".ts", ".vue", ".rs"}
+
+#: `scripts/foo.py` in prose and in subprocess arguments, `scripts.foo` in an
+#: import. Whitespace is tolerated because tokens are rejoined with a
+#: separator, which turns `from scripts.sync_knowledge` into
+#: `scripts . sync_knowledge`.
+RETIRED_SCRIPTS = re.compile(r"\bscripts\s*[./]\s*[A-Za-z0-9_./]*")
+
+#: `src.` as a module path, the retired `python.backend` package, and the bare
+#: `"src"` root logger.
+#:
+#: Every `\s*` below is load-bearing. Python is tokenised and the tokens are
+#: rejoined with a separator, so `getLogger("src")` arrives as
+#: `getLogger ( "src" )` and `python.backend` as `python . backend`. A pattern
+#: written without the space matches nothing, which is exactly how this file
+#: first shipped a guard that guarded nothing.
+#:
+#: The `python` root is matched as `python.backend` and not as `python.<any>`:
+#: `python` is also a local variable holding the interpreter path in the Tauri
+#: shell (`python.is_file`) and appears in command strings (`python .venv/...`).
+#: `backend` was the only package ever under it.
+RETIRED_PYTHON = re.compile(
+    r"(?<![\w.])src\.[A-Za-z_]+"
+    r"|python\s*\.\s*backend"
+    r"|python\s*/\s*backend"
+    r"|getLogger\s*\(\s*[\"']src[\"']\s*\)"
+)
+
+
+def _code_files() -> list[Path]:
+    files: list[Path] = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file() or path.suffix not in CODE_SUFFIXES:
+            continue
+        relative = path.relative_to(REPO_ROOT)
+        if relative.parts[0] in SKIP_TOP or relative.parts[0] == "tests":
+            continue
+        if any(part in SKIP_ANY for part in relative.parts):
+            continue
+        if any(relative.parts[:len(tree)] == tree for tree in SKIP_TREES):
+            continue
+        if relative.parts[:2] == ("app",) and relative.name == "tsconfig.json":
+            continue
+        files.append(relative)
+    return sorted(files)
+
+
+def _docstring_lines(source: str) -> set[int]:
+    """Lines occupied by a docstring, by AST position rather than by guessing."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef,
+                                  ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = getattr(node, "body", None)
+        if not body:
+            continue
+        first = body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                and isinstance(first.value.value, str):
+            lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    return lines
+
+
+def _executable_text(path: Path) -> str:
+    """Source with comments and docstrings removed; other literals kept.
+
+    A retired path in a docstring is documentation — including the note
+    recording that a launcher was deleted — and rewriting it would falsify the
+    record. But in Python a path is nearly always an ordinary string literal
+    (``["python3", "scripts/doc_lint.py"]``), so dropping every string would
+    blind the test to exactly the references it exists to catch.
+
+    Shell, Vue and YAML have no AST to consult, so they are scanned whole.
+    """
+    if path.suffix != ".py":
+        return path.read_text(encoding="utf-8")
+
+    import io
+    import tokenize
+
+    source = path.read_text(encoding="utf-8")
+    docstrings = _docstring_lines(source)
+
+    kept: list[str] = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                continue
+            if token.type == tokenize.STRING and token.start[0] in docstrings:
+                continue
+            kept.append(token.string)
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return source
+    return " ".join(kept)
+
+
+@pytest.mark.parametrize("relative", _code_files(), ids=lambda p: p.as_posix())
+def test_no_executable_file_references_scripts(relative: Path):
+    path = REPO_ROOT / relative
+    try:
+        text = _executable_text(path)
+    except UnicodeDecodeError:
+        pytest.skip("not text")
+
+    stale = sorted(set(RETIRED_SCRIPTS.findall(text)))
+    assert not stale, (
+        f"{relative.as_posix()} still references {stale} — the tree moved to "
+        f"tools/<category>/, and this fails only at run time"
+    )
+
+
+@pytest.mark.parametrize("relative", _code_files(), ids=lambda p: p.as_posix())
+def test_no_executable_file_references_the_old_python_root(relative: Path):
+    """``src`` is also a very common local variable name, so this is narrow.
+
+    A bare ``rpa.parent`` in code is a ``Path`` variable and stays; only
+    ``rpa.<module>`` — which in code can only appear inside a string, because a
+    local variable's value is never interpolated into a literal — is stale.
+    """
+    path = REPO_ROOT / relative
+    try:
+        text = _executable_text(path)
+    except UnicodeDecodeError:
+        pytest.skip("not text")
+
+    stale = sorted(set(RETIRED_PYTHON.findall(text)))
+    assert not stale, (
+        f"{relative.as_posix()} still references {stale} — the package is now "
+        f"rpa/, and the desktop API is rpa.backend"
+    )
+
+
+def test_the_retired_trees_are_actually_gone():
+    assert not (REPO_ROOT / "scripts").exists(), "scripts/ came back"
+    assert not (REPO_ROOT / "src").exists(), "src/ came back"
+    assert not (REPO_ROOT / "python").exists(), "python/ came back"
+    assert (REPO_ROOT / "rpa").is_dir()
+    assert (REPO_ROOT / "tools").is_dir()
+
+
+def test_the_two_rpa_trees_are_the_same_package():
+    """The desktop API and the engine must import as one namespace.
+
+    They were separate roots (``rpa.`` and ``rpa.backend``) reachable only
+    because each did its own ``sys.path.insert``. If they drift apart the
+    scheduler lock and the flow engine stop being able to see the same
+    ``rpa.db``.
+    """
+    import rpa
+    import rpa.backend
+    import rpa.flow
+
+    assert rpa.__name__ == "rpa"
+    for module in (rpa.backend, rpa.flow):
+        assert module.__name__.startswith("rpa.")

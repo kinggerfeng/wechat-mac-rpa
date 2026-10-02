@@ -13,4 +13,7 @@ warn_return_any = false
 warn_unused_configs = true
 
 [tool.pytest.ini_options]
-testpaths = ["src/tests"]
+testpaths = ["tests"]
+# tests/e2e needs a real WeChat window and a live 8768. It is collected by CI
+# (an import break there is real) but never executed there.
+norecursedirs = ["tests/e2e", ".venv", "third_party", "app", "*.egg-info"]

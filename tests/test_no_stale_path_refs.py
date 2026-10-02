@@ -194,6 +194,22 @@ def test_the_retired_trees_are_actually_gone():
     assert (REPO_ROOT / "tools").is_dir()
 
 
+def test_the_vue_app_still_typechecks_its_own_sources():
+    """`app/src/` is the frontend's, and must survive the Python rename.
+
+    Pointing ``tsconfig.json`` at ``rpa/**`` does not fail. Vite builds from
+    its own config, and ``vue-tsc`` reads an ``include`` that matches no files
+    and reports a clean run — a type check of nothing, which is the same
+    failure dressed as a pass.
+    """
+    config = (REPO_ROOT / "app" / "tsconfig.json").read_text(encoding="utf-8")
+
+    assert '"src/**/*.ts"' in config, "tsconfig no longer includes app/src"
+    assert '"src/**/*.vue"' in config, "tsconfig no longer includes app/src components"
+    assert "rpa/" not in config, "the Python package leaked into the frontend tsconfig"
+    assert (REPO_ROOT / "app" / "src").is_dir(), "the frontend source directory is gone"
+
+
 def test_the_two_rpa_trees_are_the_same_package():
     """The desktop API and the engine must import as one namespace.
 

@@ -5,14 +5,28 @@ __pycache__/
 *.so
 .Python
 
-# 运行时数据
-data/debug/
-data/logs/
-data/reports/
-*.log
-*.out
+# pytest
+.pytest_cache/
+.coverage
 
-# IDE
+# ── 运行时数据 ────────────────────────────────────────────────────────────
+# 整目录忽略。下面的子路径条目是历史遗留：git 不会因为父目录被忽略就
+# 自动忽略子项，逐条列举只会让人以为它们各自有额外含义。
+data/
+
+# 运行时 PID / 锁
+bot.pid
+admin.pid
+*.pid
+
+# ── 本地配置与秘密 ────────────────────────────────────────────────────────
+.env
+*.env
+!.env.example
+*.pem
+*.key
+
+# ── IDE / 编辑器 ──────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
@@ -21,29 +35,26 @@ data/reports/
 # 备份文件
 *.bak
 *.bak.*
+backups/
+.privacy-rewrite.git/
 
 # macOS
 .DS_Store
 
-# pytest
-.pytest_cache/
-# 环境变量（包含 API key）
-.env
+# ── Claude Code ───────────────────────────────────────────────────────────
+# 只忽略个人配置。.claude/rules/*.md 是项目纪律的一部分，必须进版本库：
+# CLAUDE.md 引用它们，而 CLAUDE.md 是跟踪的。规则只在本机可见，
+# 换台机器就没了。
+.claude/settings.local.json
+.claude/settings.json
 
-# 运行时生成的数据
-data/screenshots/
-data/global_state.json
-data/memory/
-data/**/*.db
-data/**/*.sqlite*
-data/**/*.jsonl
-
-# 本地模型权重（仅保留目录说明）
-models/*
-!models/README.md
-
-# 私人聊天与身份资料：只能保留在本机
-prompts/persona.md
+# ── 私人资料：只能留在本机 ────────────────────────────────────────────────
+# 聊天导出、身份资料、few-shot 样本。这些一旦提交就是不可逆的泄露。
+AGENTS.md
+prompts/
+!prompts/persona.md.example
+!prompts/fact_check.md
+!prompts/fact_verify.md
 **/chat_export*/
 **/chat_exports*/
 **/wechat_export*/
@@ -55,53 +66,32 @@ prompts/persona.md
 *.sqlite3
 *.db
 
-# PID 文件
-bot.pid
+# ── 本地模型权重（仅保留目录说明）──────────────────────────────────────────
+models/*
+!models/README.md
 
-# 敏感配置
-.env
-*.env
-!.env.example
-
-# 运行时数据目录
-data/
-
-# IDE
-.claude/
-
-# 运行时 PID
-admin.pid
-
-# Judge 缓存（运行时生成）
-src/tests/fixtures/reply_quality/*/judge_*.json
-
-# 测试运行时自动生成的缓存/样本（非人工标注 fixture）
-src/tests/fixtures/auto_cases/
-src/tests/fixtures/judge_quality/cache/
-src/tests/fixtures/judge_quality_v2/cache/
-src/tests/fixtures/reply_stability/cache/
+# ── 测试数据 ──────────────────────────────────────────────────────────────
+# 运行时生成的缓存与样本
+tests/fixtures/auto_cases/
+tests/fixtures/judge_quality/cache/
+tests/fixtures/judge_quality_v2/cache/
+tests/fixtures/reply_stability/cache/
 
 # 含真实个人数据的 fixtures（已清理，禁止重新添加）
-tests_integration/fixtures/
-src/tests/fixtures/unread_false_positive/
-src/tests/fixtures/unread_badge/
-src/tests/fixtures/reply_quality/
-src/tests/fixtures/tool_decision/
+tests/fixtures/unread_false_positive/
+tests/fixtures/unread_badge/
+tests/fixtures/reply_quality/
+tests/fixtures/tool_decision/
 
 # 含真实个人数据的测试代码（本地保留，禁止提交）
-src/tests/test_chat_list_unread.py
-src/tests/test_chat_list_unread_integration.py
-src/tests/test_*_benchmark.py
-tests_integration/test_full_pipeline_real_screenshots.py
-src/tests/test_memory_search_regression.py
+tests/test_chat_list_unread.py
+tests/test_chat_list_unread_integration.py
+tests/test_*_benchmark.py
+tests/test_memory_search_regression.py
+tests/e2e/fixtures/
+tests/e2e/test_full_pipeline_real_screenshots.py
 
-# 内部提示词与纪律守则
-AGENTS.md
-prompts/
-!prompts/persona.md.example
-!prompts/fact_check.md
-!prompts/fact_verify.md
-backups/
-.privacy-rewrite.git/
+# ── 工具产物 ──────────────────────────────────────────────────────────────
 bandit-report.json
-.coverage
+*.log
+*.out

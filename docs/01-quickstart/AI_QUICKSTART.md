@@ -13,7 +13,7 @@
 - **输出**: 调用 LLM 生成回复 → 用 AppleScript 粘贴发送
 
 **当前稳定版本**: 模块化架构版（`rpa/bot/wechat_bot.py`）
-**架构文档**: [`../02-architecture/ARCHITECTURE.md`](../02-architecture/ARCHITECTURE.md)
+**架构文档**: [`ARCHITECTURE.md`](../../ARCHITECTURE.md)
 
 ---
 
@@ -22,7 +22,7 @@
 ### 1. 读三个文件
 
 按顺序读：
-1. [`../02-architecture/ARCHITECTURE.md`](../02-architecture/ARCHITECTURE.md) — 系统架构总览
+1. [`ARCHITECTURE.md`](../../ARCHITECTURE.md) — 系统架构总览
 2. [`../04-troubleshooting/LESSONS_LEARNED.md`](../04-troubleshooting/LESSONS_LEARNED.md) — 踩坑记录（避免重复踩坑）
 3. 你负责的模块接口（见下方"模块速查"）
 
@@ -104,7 +104,7 @@ Action发送 → 记录状态
 ## FAQ
 
 **Q: 为什么旧版本是 monolithic 的？**  
-A: 历史原因，为了快速迭代。核心逻辑验证完成后，已按 [`../02-architecture/ARCHITECTURE.md`](../02-architecture/ARCHITECTURE.md) 完成模块化拆分。旧版本 `core/auto_bot_vision_ocr_v2/v3/v4.py` 已删除，当前唯一入口是 `rpa/bot/wechat_bot.py`。
+A: 历史原因，为了快速迭代。核心逻辑验证完成后，已按 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) 完成模块化拆分。旧版本 `core/auto_bot_vision_ocr_v2/v3/v4.py` 已删除，当前唯一入口是 `rpa/bot/wechat_bot.py`。
 
 **Q: 改了边界值后怎么验证？**  
 A: `tests/fixtures/errors/` 下有 23 个回归测试用例，要求：

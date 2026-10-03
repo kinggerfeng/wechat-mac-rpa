@@ -465,8 +465,7 @@ erDiagram
     }
 ```
 
-- 完整系统数据模型（含 `persons`、`aliases`、`facts`、`wiki` 等未来 Phase）见 [`docs/02-architecture/DATA_MODEL_SPEC.md`](docs/02-architecture/DATA_MODEL_SPEC.md)。
-- Phase 1 MVP 详细设计见 [`docs/02-architecture/DATA_MODEL_PHASE1.md`](docs/02-architecture/DATA_MODEL_PHASE1.md)。
+- 已落地的数据模型见 [`docs/02-architecture/DATA_MODEL_PHASE1.md`](docs/02-architecture/DATA_MODEL_PHASE1.md)：SQLite DB-only，`chatrooms` / `messages` / `chat_members` 三张表，JSON 分片已废除。
 - 常用 DB 维护脚本：
   - `python tools/data/migrate_exports_to_db.py`：批量导入导出文件到 DB
   - `python tools/data/deduplicate_db.py`：按复合键去重
@@ -492,17 +491,15 @@ erDiagram
 
 | 文档 | 说明 |
 |------|------|
-| [架构总览](ARCHITECTURE.md) | 5 分钟地图：目录、数据归属、必须守住的不变量 |
+| [架构总览](ARCHITECTURE.md) | 唯一的架构说明：双路径、进程模型、数据归属、出网收口、不变量 |
 | [快速开始](docs/01-quickstart/AI_QUICKSTART.md) | 环境配置、依赖安装、首次启动 |
-| [架构设计](docs/02-architecture/ARCHITECTURE.md) | L1-L5 分层架构、依赖规则、边界约束 |
 | [数据模型 Phase 1](docs/02-architecture/DATA_MODEL_PHASE1.md) | SQLite DB-only 架构：chatrooms / messages / chat_members |
-| [数据模型全量设计](docs/02-architecture/DATA_MODEL_SPEC.md) | 含 persons、aliases、facts、wiki 等未来 Phase 设计 |
 | [API 接口速查](docs/02-architecture/API_SURFACE.md) | 当前生产代码的公共接口，可直接复制粘贴 |
 | [模块索引](docs/02-architecture/MODULE_INDEX.md) | "消息识别错了"→改哪个文件 |
+| [模块 Spec](docs/02-architecture/specs/PERCEPTION_SPEC.md) | 逐模块契约，`specs/` 下按模块分文件 |
 | [编码原则](docs/02-architecture/CODING_PRINCIPLES.md) | 类型注解、单一职责、单向依赖 |
-| [项目进度](docs/03-guides/PROJECT_STATUS.md) | 当前状态、活跃问题、benchmark 结果 |
-| [性能优化 Spec](docs/02-architecture/specs/PERFORMANCE_SPEC.md) | 全链路 profiling 点、瓶颈分析、优化方案 |
 | [踩坑记录](docs/04-troubleshooting/LESSONS_LEARNED.md) | 历史教训、常见错误模式 |
+| [代码审计工作流](docs/03-guides/CODE_AUDIT_WORKFLOW.md) | 发现的问题怎么走完记录→修复→回归 |
 
 ---
 

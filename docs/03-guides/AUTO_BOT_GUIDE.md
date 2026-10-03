@@ -12,7 +12,7 @@
 >
 > **相关文档**：
 > - [AI 快速上手](../01-quickstart/AI_QUICKSTART.md)
-> - [架构设计](../02-architecture/ARCHITECTURE.md)
+> - [架构总览](../../ARCHITECTURE.md)
 > - [解决方案汇总](../04-troubleshooting/SOLUTIONS.md)
 >
 > 以下正文属于历史归档，操作步骤均已废弃，请勿执行。

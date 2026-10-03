@@ -74,16 +74,15 @@
 | 文档 | 分类 | 状态 |
 |------|------|------|
 | `README.md` | 当前实现 | 🚀 已上线 |
+| `ARCHITECTURE.md` | 当前实现 | 🚀 唯一架构说明 |
 | `AI_QUICKSTART.md` | 当前实现 | 🚀 已上线 |
-| `PROJECT_STATUS.md` | 当前实现 | 🚀 已上线 |
 | `SOLUTIONS.md` | 当前实现 | 🚀 已上线 |
 | `LESSONS_LEARNED.md` | 当前实现 | 🚀 已上线 |
 | `LOGGING_DESIGN.md` | 当前实现 | 🚀 已上线 |
 | `TICK_INVESTIGATION_GUIDE.md` | 当前实现 | 🚀 已上线 |
 | `RUNTIME_INVESTIGATION.md` | 当前实现 | 🚀 已上线 |
-| `ARCHITECTURE.md` | 目标重构架构 | ⚠️ 部分实现（代码与文档存在差异） |
-| `API_SURFACE.md` | 目标重构架构 | ⚠️ 部分实现（代码与文档存在差异） |
-| `MODULE_INDEX.md` | 目标重构架构 | ⚠️ 部分实现（代码与文档存在差异） |
+| `API_SURFACE.md` | 当前实现 | 🚀 已上线 |
+| `MODULE_INDEX.md` | 当前实现 | 🚀 已上线 |
 | `AUTO_BOT_GUIDE.md` | 废弃方案 | ❌ 已废弃 |
 | `GET_DB_KEY.md` | 废弃方案 | ❌ 已废弃 |
 | `KEY_EXTRACTION_GUIDE.md` | 废弃方案 | ❌ 已废弃 |

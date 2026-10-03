@@ -16,13 +16,13 @@
 |------|----------------|------|
 | 入口 | `run_bot.py` | 生产环境入口 |
 | 配置 | `.env`、`.env.example`、`.gitignore` | 环境配置 |
-| 文档 | `README.md`、`AGENTS.md` | 项目说明 |
-| 代码 | `rpa/`、`python/`、`tools/` | 源代码 |
-| 测试 | `tests_integration/` | 集成测试与回归测试 |
+| 文档 | `README.md`、`CLAUDE.md`、`ARCHITECTURE.md`、`CONTRIBUTING.md` | 项目说明与架构 |
+| 代码 | `apps/`、`services/`、`rpa/`、`tools/` | 四个产品树，见根 `ARCHITECTURE.md` |
+| 测试 | `tests/` | 统一测试入口（`tests/e2e` 需真机） |
 | 文档 | `docs/` | 文档体系 |
 | 数据 | `data/` | 运行时数据（已被 gitignore） |
-| 归档 | `archive/` | 旧文档归档 |
-| 模型 | `models/` | 本地模型（如 embedding） |
+| 归档 | `docs/archive/` | 旧文档归档 |
+| 模型 | `models/` | 本地模型权重（如 embedding） |
 | 第三方 | `third_party/` | 外部依赖 |
 
 ### 运行时文件归属
@@ -89,7 +89,7 @@
     - 同步更新相关文档
     │
     ▼
-8. 如有新教训 → 更新 AGENTS.md 历史教训
+8. 如有新教训 → 更新 `docs/04-troubleshooting/LESSONS_LEARNED.md`
 ```
 
 ---
@@ -199,9 +199,9 @@
 |------|------------|------|
 | 新增/删除模块 | MODULE_INDEX.md 更新 | `docs/02-architecture/` |
 | 修改公共接口 | API_SURFACE.md 更新 | `docs/02-architecture/` |
-| 修改 L1-L5 依赖关系 | ARCHITECTURE.md 更新 | `docs/02-architecture/` |
-| 新增 benchmark | PROJECT_STATUS.md 更新 | `docs/03-guides/` |
-| 修 bug 有新教训 | AGENTS.md 历史教训 | 根目录 |
+| 修改 L1-L5 依赖关系 | 根 `ARCHITECTURE.md` 更新 | 仓库根 |
+| 新增 benchmark | `data/experiments/` 下留实验记录（假设 / 配置 / 结果 / 结论） | `data/experiments/` |
+| 修 bug 有新教训 | `LESSONS_LEARNED.md` 历史教训 | `docs/04-troubleshooting/` |
 | 做 AB 实验 | 实验记录（假设 / 配置 / 结果 / 结论） | `data/experiments/` |
 | 前端页面开发 | Playwright 自测截图 | `/tmp/` 留证 |
 | 目录结构调整 | 本文件（WORKFLOW.md）更新 | `docs/03-guides/` |

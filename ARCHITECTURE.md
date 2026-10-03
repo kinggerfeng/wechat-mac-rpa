@@ -16,10 +16,16 @@ file happens to sit.
 apps/
   engine/         RPA orchestration engine (Python) — registry, executor, expr,
                   strategy, the 74 node types, and layout/ beneath it
-  desktop/        Tauri + Vue 3 desktop shell — the canvas and every page
-  admin_console/  operator console, being retired in favour of the desktop shell
+  desktop/        Tauri + Vue 3 shell for the end user — the canvas and the nine
+                  pages that drive the machine
+  admin_console/  operations console for the operator — thirteen pages over
+                  data/cases.db; a browser app, never shipped in the bundle
+  shared/         the two frontends' common code: the single API client, the
+                  hand-written contracts, the theme tokens, and the port
+                  declaration they must agree on
 services/
-  company_api/    desktop FastAPI, launched by Tauri via uvicorn
+  company_api/    FastAPI, launched by Tauri via uvicorn; the ops console talks
+                  to it too, with the internal routers mounted
 rpa/              the legacy L1–L5 bot and the platform primitives it uses
                   (bot/ db/ memory/ reply/ action/ capture/ ocr/ perception/ …)
 tools/            one-off scripts, grouped bench / data / persona / wiki / ops
@@ -32,6 +38,13 @@ without a UI — a caller can drive a flow from a script, which is what
 `apps/engine/cli.py` is for. `apps/desktop` is one *consumer* of it. Folding
 the engine into the desktop app would make "headless automation" impossible,
 and would put 12.5k lines of orchestration behind a Tauri bundle.
+
+**Why the console is a separate app, not a second nav group.** An end user of
+the RPA product never reviews ticks or judges badcases — that is the operator's
+job, over a different database. When the console pages lived in the desktop
+shell, a shipped build produced eight links that all 404, because the backend
+already classified `cases_api` as internal while the frontend had no such
+switch. The backend was right and the frontend was wrong.
 
 **Why the API is not under `apps/`.** It is not an app; it is a process the
 desktop shell spawns and then talks to over loopback. Putting it beside the
@@ -46,8 +59,10 @@ All three Python trees resolve from the repository root — none of them patches
 `tests/test_no_stale_path_refs.py::test_no_tree_inserts_its_own_directory_into_sys_path`
 enforces by importing them for real.
 
-Directory names holding Python modules use identifiers (`company_api`,
-`admin_console`), because a hyphen makes the package unimportable.
+Directory names holding Python modules use identifiers (`company_api`), and
+the console is `admin_console` rather than `admin-console` because a hyphen
+makes the package unimportable. Its own pages are all under `src/`, so the
+hyphen would only have cost the one import.
 
 `tools/` and `rpa/tools/` are unrelated things that share a word: the former is
 operator scripts, the latter is the bot's tool registry.

@@ -2,10 +2,10 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { AlarmClock, Delete, EditPen, Plus, Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import { useEngineStore } from "../stores/engine";
 import { useFlowStore } from "../stores/flow";
-import type { CronPreview, Schedule, ScheduleStatus } from "../types";
+import type { CronPreview, Schedule, ScheduleStatus } from "@shared/types";
 
 const DASH = "—";
 const DEBOUNCE_MS = 400;

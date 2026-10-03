@@ -3,8 +3,8 @@ import { computed, ref, watch } from "vue";
 import { ArrowLeft, Refresh, TopRight } from "@element-plus/icons-vue";
 import { useRoute } from "vue-router";
 
-import { api, ApiError } from "../api/client";
-import type { ScreenshotDetail } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { ScreenshotDetail } from "@shared/types";
 
 const DASH = "—";
 

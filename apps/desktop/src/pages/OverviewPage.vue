@@ -3,9 +3,9 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ArrowRight, Refresh, Setting } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import { useEngineStore } from "../stores/engine";
-import type { Permission, PermissionStatus, Run, RunStatus } from "../types";
+import type { Permission, PermissionStatus, Run, RunStatus } from "@shared/types";
 
 // A null reading and a real zero mean different things: "—" says the backend
 // never answered, "0" says it answered and there was nothing. Collapsing the

@@ -1,6 +1,7 @@
 # 前端改动流程与硬约束
 
-> 改 `apps/desktop/` 时加载。本文只记**会踩、且踩了会静默出错**的坑。
+> 改 `apps/desktop/`（终端用户）或 `apps/admin_console/`（运营平台）时加载。
+> 本文只记**会踩、且踩了会静默出错**的坑。
 > 与 `debugging.md`（改 `rpa/` 时）并列，两者都服从 `CLAUDE.md` 的铁律。
 
 ## 技术栈与硬约束
@@ -11,8 +12,8 @@
 | 路由 | `createWebHashHistory()` —— Tauri 从文件系统加载，path history 刷新必 404 |
 | 组件库 | Element Plus，**不新增依赖** |
 | 图标 | `@element-plus/icons-vue` |
-| 样式 | scoped `<style>`，颜色一律取 `apps/desktop/src/styles/tokens.css` 的 CSS 变量 |
-| 静态检查 | `npx vue-tsc --noEmit -p tsconfig.json` 必须退出 0 |
+| 样式 | scoped `<style>`，颜色一律取 `apps/shared/styles/tokens.css` 的 CSS 变量 |
+| 静态检查 | `npx vue-tsc --noEmit -p tsconfig.json` 必须退出 0（两个应用各自检查） |
 
 **不许自造配色**。tokens 里已有 `--green / --orange / --line / --paper / --canvas /
 --path-element / --path-vision / --path-auto` 等。新页面硬写 `#357b63` 就是在制造
@@ -26,8 +27,8 @@
 |---|---|
 | `apps/desktop/src/pages/RunHistoryPage.vue` | 列表页骨架：loading / loadError / empty 三态 |
 | `apps/desktop/src/pages/CanvasPage.vue` | 两栏布局、长耗时动作的进度反馈 |
-| `apps/desktop/src/api/client.ts` | 所有请求的唯一入口，**页面里不许裸 `fetch`** |
-| `apps/desktop/src/types/index.ts` | 手写契约，**不许 `any` 糊过去** |
+| `apps/shared/api/client.ts` | 所有请求的唯一入口（两个应用共用），**页面里不许裸 `fetch`** |
+| `apps/shared/types/index.ts` | 手写契约，**不许 `any` 糊过去** |
 
 ---
 
@@ -134,10 +135,15 @@ graph 里的节点若缺 `position`，`NodeCard.vue` 读 `node.position.x` 直�
 ## 提交前自查
 
 ```bash
-cd apps/desktop
-npx vue-tsc --noEmit -p tsconfig.json   # 必须退出 0
-npm run build                            # 必须成功
+for app in desktop admin_console; do
+  cd "apps/$app"
+  npx vue-tsc --noEmit -p tsconfig.json   # 必须退出 0
+  npm run build                           # 必须成功
+done
 ```
+
+改的是运营平台就只跑 `admin_console`；但**新增或移动 `apps/shared/` 里的东西
+必须两个都跑**——它同时是两个应用的编译输入。
 
 两条都过 ≠ 功能对。改了交互就**真的点一遍**：
 空态、错误态、长文本、null 字段、非法路由参数。

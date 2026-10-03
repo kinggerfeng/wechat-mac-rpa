@@ -34,7 +34,7 @@
 | 运行日志 | `bot_logger` | `data/logs/` |
 | Tick 调试 JSON | `debug_logger` | `data/debug/` |
 | 截图 | `window_capture` | `data/screenshots/` |
-| 后台运行时输出 | `apps/admin_console/admin.py`（待退役） | `*.out`（已被 gitignore） |
+| 运营平台运行时输出 | `cd apps/admin_console && npm run dev` | `*.out`（已被 gitignore） |
 
 ### 清理检查清单
 
@@ -216,14 +216,15 @@
 
 **任何修改前端相关代码（Vue 页面、桌面 API、前端路由、路径配置）后，必须全量验证所有页面，禁止只看代码就声称完成。**
 
-> **本节原描述的是 `apps/admin_console/admin.py` 的 8 个服务端渲染页面。**
-> 桌面端已改为 Tauri + Vue 3（`apps/desktop/`），cases 域路由迁至 `services/company_api/cases_api.py`，
-> `admin.py` 进入待退役状态。下面保留其页面清单作为**路由对照**，因为
-> `/api/cases/*` 的每个端点仍对应一个 Vue 页面，改后端时需要确认对应页面。
+> **这 8 个页面已从 `apps/desktop/` 迁到 `apps/admin_console/`（运营平台），旧的
+> `admin.py` 随之退役。** cases 域路由在 `services/company_api/cases_api.py`，是
+> `INTERNAL_ROUTERS`，只在 `RPA_DESKTOP_INTERNAL != "0"` 时挂载。
+> 下面保留页面清单作为**路由对照**：`/api/cases/*` 的每个端点仍对应一个页面，
+> 改后端时需要确认对应页面在运营平台里。
 
 ### 验证范围
 
-必须覆盖以下能力面（页面路径以 `apps/desktop/src/pages/` 为准）：
+必须覆盖以下能力面（页面路径以 `apps/admin_console/src/pages/` 为准）：
 - Dashboard 概览（`/api/dashboard/summary`）
 - Tick 查看与 GT 标注（`/api/cases/ticks`、`/api/cases/ticks/{id}/gt`）
 - 人工审核（`/api/cases/reviews`）

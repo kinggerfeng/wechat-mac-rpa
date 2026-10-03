@@ -7,8 +7,8 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import type { BenchmarkReport } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { BenchmarkReport } from "@shared/types";
 
 const DASH = "—";
 

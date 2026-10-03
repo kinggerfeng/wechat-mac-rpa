@@ -9,8 +9,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import { api, subscribeTrace } from "../api/client";
-import type { Run, Span, SpanStatus } from "../types";
+import { api, subscribeTrace } from "@shared/api/client";
+import type { Run, Span, SpanStatus } from "@shared/types";
 
 export interface TraceNode {
   key: string;

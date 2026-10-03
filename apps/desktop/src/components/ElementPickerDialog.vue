@@ -11,8 +11,8 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import type { Element, PickScreenshot } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { Element, PickScreenshot } from "@shared/types";
 
 const props = defineProps<{ modelValue: boolean; flowId?: string | null }>();
 const emit = defineEmits<{

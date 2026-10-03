@@ -2,9 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import { useEngineStore } from "../stores/engine";
-import type { ReviewRow } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import { useConnectionStore } from "../stores/connection";
+import type { ReviewRow } from "@shared/types";
 
 const DASH = "—";
 
@@ -58,7 +58,7 @@ const BADCASE_LABEL: Record<string, string | undefined> = {
   none: "无问题",
 };
 
-const engine = useEngineStore();
+const connection = useConnectionStore();
 
 const rows = ref<ReviewRow[]>([]);
 const loading = ref(false);
@@ -142,7 +142,7 @@ onMounted(() => void load());
         <h1>案例库</h1>
         <p class="head-note muted">
           Judge 打出来的 badcase 草稿。状态、类型、严重度三列都是数据库里的自由文本，
-          映射表只覆盖常见值，其余原样显示。数据更新于 {{ engine.lastUpdated || DASH }}。
+          映射表只覆盖常见值，其余原样显示。数据更新于 {{ connection.lastUpdated || DASH }}。
         </p>
       </div>
       <div class="head-actions">
@@ -159,7 +159,7 @@ onMounted(() => void load());
     </header>
 
     <el-alert
-      v-if="engine.online === false"
+      v-if="connection.online === false"
       class="notice"
       type="warning"
       show-icon

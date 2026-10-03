@@ -8,7 +8,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import type {
   Flow,
   FlowEdge,
@@ -20,7 +20,7 @@ import type {
   NodeSpec,
   Position,
   ValidationIssue,
-} from "../types";
+} from "@shared/types";
 
 function emptyGraph(): FlowGraph {
   return { version: 1, entry: "", default_path: null, variables: {}, nodes: [], edges: [] };

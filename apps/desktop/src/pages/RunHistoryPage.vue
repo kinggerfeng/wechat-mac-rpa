@@ -2,10 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { Refresh, VideoPause } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import { useEngineStore } from "../stores/engine";
 import { useTraceStore, type TraceNode } from "../stores/trace";
-import type { Run, RunStatus, SpanStatus } from "../types";
+import type { Run, RunStatus, SpanStatus } from "@shared/types";
 
 const DASH = "—";
 const REFRESH_MS = 2000;

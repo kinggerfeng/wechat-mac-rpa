@@ -22,11 +22,12 @@ use tauri::Manager;
 /// Plain text, not JSON, so no parser is needed on either side. The frontend
 /// reads it with Vite's `?raw` at build time; `tests/test_api_port.py` fails
 /// if either side drifts.
-// Relative to this file, not to src-tauri/: lib.rs sits in src-tauri/src/, so
-// this is apps/desktop/api-port.txt. One `../` short of it resolves to a file
-// that does not exist, and the crate then fails to compile rather than to
-// warn — so `tests/test_api_port.py` resolves this path for real.
-const API_PORT_DECLARATION: &str = include_str!("../../api-port.txt");
+// Relative to this file, not to src-tauri/: lib.rs sits in
+// apps/desktop/src-tauri/src/, so three `../` reach apps/ and the declaration
+// is the one both frontends import. Being off by a level does not warn — it
+// fails to compile, and only if something compiles the crate, which nothing
+// here does — so `tests/test_api_port.py` resolves this path for real.
+const API_PORT_DECLARATION: &str = include_str!("../../../shared/api-port.txt");
 
 static API_PORT: OnceLock<u16> = OnceLock::new();
 
@@ -35,7 +36,7 @@ fn api_port() -> u16 {
         API_PORT_DECLARATION
             .trim()
             .parse()
-            .expect("apps/desktop/api-port.txt must hold a port number")
+            .expect("apps/shared/api-port.txt must hold a port number")
     })
 }
 

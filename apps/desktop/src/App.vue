@@ -5,19 +5,11 @@ import {
   Aim,
   AlarmClock,
   Clock,
-  Collection,
   Cpu,
   Document,
-  DocumentChecked,
-  List,
   Lock,
-  Notebook,
   Odometer,
-  Picture,
-  ScaleToOriginal,
   Share,
-  Switch,
-  TrendCharts,
   VideoPause,
   VideoPlay,
 } from "@element-plus/icons-vue";
@@ -38,10 +30,11 @@ interface NavItem {
 }
 
 /**
- * Two groups in one rail. The engine pages drive the machine; the cases pages
- * read `data/cases.db` and are about what the bot already did. Keeping them
- * visually separated matters because a click on the wrong one is either
- * harmless (a filter) or not (starting a run).
+ * Everything the end user drives the machine with. The operations console is
+ * deliberately a different application (`apps/admin_console/`) rather than a
+ * second group here: its pages read `data/cases.db` and belong to operators,
+ * and an end user has no use for them — a link they cannot make sense of is
+ * worse than no link.
  */
 const engineNav: NavItem[] = [
   { name: "overview", title: "运行总览", icon: Odometer },
@@ -54,16 +47,6 @@ const engineNav: NavItem[] = [
   { name: "permissions", title: "权限与设置", icon: Lock },
 ];
 
-const casesNav: NavItem[] = [
-  { name: "ticks", title: "Tick 记录", icon: List },
-  { name: "ground-truth", title: "真值对比", icon: ScaleToOriginal },
-  { name: "reviews", title: "案例库", icon: Collection },
-  { name: "screenshots", title: "截图", icon: Picture },
-  { name: "benchmarks", title: "Benchmark", icon: TrendCharts },
-  { name: "experiments", title: "实验 A/B", icon: Switch },
-  { name: "code-audit", title: "代码审计", icon: DocumentChecked },
-  { name: "wiki-review", title: "Wiki 审核", icon: Notebook },
-];
 
 /**
  * A detail route highlights its list parent, so the rail never goes fully
@@ -76,8 +59,6 @@ const activeName = computed(() => {
   return parent ?? current;
 });
 
-const visibleNav = computed(() => [...engineNav, ...casesNav]);
-const casesStart = engineNav.length;
 const currentTitle = computed(() => (route.meta?.title as string | undefined) ?? "控制台");
 
 /**
@@ -118,8 +99,7 @@ onUnmounted(() => engine.stopPolling());
       <div class="brand-mark"><span>W</span></div>
       <div class="rail-rule" />
       <nav class="rail-nav">
-        <template v-for="(item, index) in visibleNav" :key="item.name">
-          <div v-if="index === casesStart" class="rail-group">数据 / 标注</div>
+        <template v-for="item in engineNav" :key="item.name">
           <router-link
             class="rail-button"
             :class="{ selected: activeName === item.name }"

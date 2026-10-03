@@ -2,9 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import { CopyDocument, Lock, MagicStick, Refresh, Setting } from "@element-plus/icons-vue";
 
-import { API_BASE, api, ApiError } from "../api/client";
+import { API_BASE, api, ApiError } from "@shared/api/client";
 import { useEngineStore } from "../stores/engine";
-import type { Permission, PermissionReport, PermissionStatus, WebhookInfo } from "../types";
+import type { Permission, PermissionReport, PermissionStatus, WebhookInfo } from "@shared/types";
 
 const DASH = "—";
 

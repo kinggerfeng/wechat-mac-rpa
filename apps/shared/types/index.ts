@@ -425,7 +425,7 @@ export interface ElementTemplate {
 
 /* ── cases domain ──────────────────────────────────────────────────────────
  *
- * Mirrors `python/backend/cases_api.py`, the router that owns `data/cases.db`.
+ * Mirrors `services/company_api/cases_api.py`, the router that owns `data/cases.db`.
  * Kept separate from the flow types above on purpose: the flow engine never
  * reads cases.db, and a type that crosses that boundary is a coupling bug
  * waiting to happen.

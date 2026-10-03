@@ -8,8 +8,8 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { MoreFilled, Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import type { Experiment } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { Experiment } from "@shared/types";
 
 const DASH = "—";
 

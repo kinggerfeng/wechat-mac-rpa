@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import type { TickFilter, TickRow } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { TickFilter, TickRow } from "@shared/types";
 
 const DASH = "—";
 const PAGE_SIZES = [50, 100, 200];

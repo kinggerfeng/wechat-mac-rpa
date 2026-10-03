@@ -7,7 +7,7 @@
 
 import { computed, ref } from "vue";
 import { Search } from "@element-plus/icons-vue";
-import type { NodeCategory, NodeSpec } from "../../types";
+import type { NodeCategory, NodeSpec } from "@shared/types";
 
 const props = defineProps<{ categories: NodeCategory[] }>();
 

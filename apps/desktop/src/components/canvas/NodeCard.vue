@@ -7,9 +7,9 @@
 // clicking anything.
 
 import { computed } from "vue";
-import type { FlowNode, LocatePath, NodeSpec } from "../../types";
-import { PATH_HINTS, PATH_LABELS } from "../../types";
-import type { ValidationIssue } from "../../types";
+import type { FlowNode, LocatePath, NodeSpec } from "@shared/types";
+import { PATH_HINTS, PATH_LABELS } from "@shared/types";
+import type { ValidationIssue } from "@shared/types";
 
 const props = defineProps<{
   node: FlowNode;

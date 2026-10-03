@@ -2,9 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import { useEngineStore } from "../stores/engine";
-import type { GroundTruthRow } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import { useConnectionStore } from "../stores/connection";
+import type { GroundTruthRow } from "@shared/types";
 
 const DASH = "—";
 
@@ -38,7 +38,7 @@ const HUMAN_TYPE_LABEL: Record<string, string | undefined> = {
   other: "其他",
 };
 
-const engine = useEngineStore();
+const connection = useConnectionStore();
 
 const rows = ref<GroundTruthRow[]>([]);
 const loading = ref(false);
@@ -157,7 +157,7 @@ onMounted(() => void load());
         <h1>真值对比</h1>
         <p class="head-note muted">
           同一个 tick 上，LLM Judge 与人工标注结论不一致的地方。分歧行是调试 Judge 的入口：
-          人工说正常而 Judge 判坏例，或反过来。数据更新于 {{ engine.lastUpdated || DASH }}。
+          人工说正常而 Judge 判坏例，或反过来。数据更新于 {{ connection.lastUpdated || DASH }}。
         </p>
       </div>
       <div class="head-actions">
@@ -179,7 +179,7 @@ onMounted(() => void load());
     </header>
 
     <el-alert
-      v-if="engine.online === false"
+      v-if="connection.online === false"
       class="notice"
       type="warning"
       show-icon

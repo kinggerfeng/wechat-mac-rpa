@@ -6,14 +6,14 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh, Search } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import {
   WIKI_ACTIONS,
   WIKI_ACTION_LABELS,
   type WikiAction,
   type WikiDecision,
   type WikiReviewItem,
-} from "../types";
+} from "@shared/types";
 
 const DASH = "—";
 

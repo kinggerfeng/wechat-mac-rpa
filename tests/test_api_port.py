@@ -22,23 +22,27 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_ROOT = REPO_ROOT / "apps" / "desktop"
+#: The declaration lives in the shared tree because there are now two frontends
+#: that must agree on it — the Tauri shell and the operations console. Putting
+#: it in either app would make one of them reach sideways for it.
+SHARED_ROOT = REPO_ROOT / "apps" / "shared"
 
-DECLARATION = DESKTOP_ROOT / "api-port.txt"
+DECLARATION = SHARED_ROOT / "api-port.txt"
 RUST_SHELL = DESKTOP_ROOT / "src-tauri" / "src" / "lib.rs"
-FRONTEND_CLIENT = DESKTOP_ROOT / "src" / "api" / "client.ts"
+FRONTEND_CLIENT = SHARED_ROOT / "api" / "client.ts"
 
 
 def _declaration() -> int:
     raw = DECLARATION.read_text(encoding="utf-8").strip()
     port = int(raw)
-    assert 1 <= port <= 65535, f"apps/desktop/api-port.txt holds an impossible port: {port}"
+    assert 1 <= port <= 65535, f"apps/shared/api-port.txt holds an impossible port: {port}"
     return port
 
 
 def test_the_declaration_exists_and_is_a_port():
     """A missing file fails the Rust build at include_str! and the TS build at
     import, so this is the cheap check that the file is not empty or garbage."""
-    assert DECLARATION.is_file(), "apps/desktop/api-port.txt is the single source and is missing"
+    assert DECLARATION.is_file(), "apps/shared/api-port.txt is the single source and is missing"
     _declaration()
 
 
@@ -67,12 +71,12 @@ def _code_lines(text: str) -> str:
 def test_the_rust_shell_reads_the_declaration():
     text = RUST_SHELL.read_text(encoding="utf-8")
     assert "api-port.txt" in text, (
-        "lib.rs no longer reads apps/desktop/api-port.txt; the port went back to a literal"
+        "lib.rs no longer reads apps/shared/api-port.txt; the port went back to a literal"
     )
     literals = re.findall(r"\b876[0-9]\b", _code_lines(text))
     assert not literals, (
         f"lib.rs carries a hardcoded port {literals}; it must come from "
-        f"apps/desktop/api-port.txt so the frontend can read the same value"
+        f"apps/shared/api-port.txt so the frontend can read the same value"
     )
 
 
@@ -123,7 +127,7 @@ def test_the_frontend_import_path_actually_resolves():
 def test_the_frontend_reads_the_declaration():
     text = FRONTEND_CLIENT.read_text(encoding="utf-8")
     assert "api-port.txt?raw" in text, (
-        "client.ts no longer reads apps/desktop/api-port.txt; the origin went back to a literal"
+        "client.ts no longer reads apps/shared/api-port.txt; the origin went back to a literal"
     )
     # Checked against the raw source: `127.0.0.1:<port>` is specific enough that
     # the comment explaining the old bug cannot produce a false positive, and
@@ -131,7 +135,7 @@ def test_the_frontend_reads_the_declaration():
     literals = re.findall(r"127\.0\.0\.1:\d{4}", text)
     assert not literals, (
         f"client.ts hardcodes {literals}; the origin must be built from "
-        f"apps/desktop/api-port.txt"
+        f"apps/shared/api-port.txt"
     )
 
 
@@ -142,24 +146,27 @@ def test_neither_side_declares_the_port_twice():
     second config or in a comment that someone will one day copy, is the bug.
     """
     offenders: list[str] = []
-    for path in sorted(DESKTOP_ROOT.rglob("*")):
-        if not path.is_file() or path == DECLARATION:
-            continue
-        if any(part in {"node_modules", "dist", "target", "__pycache__"}
-               for part in path.relative_to(REPO_ROOT).parts):
-            continue
-        if path.suffix not in {".rs", ".ts", ".vue", ".json", ".txt"}:
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        for number in re.findall(r"\b876\d\b", _code_lines(text)):
-            offenders.append(f"{path.relative_to(REPO_ROOT)}: {number}")
+    # Two frontends now, so "the side" is two trees: the Tauri shell and
+    # everything they share.
+    for root in (DESKTOP_ROOT, SHARED_ROOT):
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or path == DECLARATION:
+                continue
+            if any(part in {"node_modules", "dist", "target", "__pycache__"}
+                   for part in path.relative_to(REPO_ROOT).parts):
+                continue
+            if path.suffix not in {".rs", ".ts", ".vue", ".json", ".txt"}:
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            for number in re.findall(r"\b876\d\b", _code_lines(text)):
+                offenders.append(f"{path.relative_to(REPO_ROOT)}: {number}")
 
     assert not offenders, (
         f"the local API port is declared more than once: {offenders}. "
-        f"Only apps/desktop/api-port.txt may name it."
+        f"Only apps/shared/api-port.txt may name it."
     )
 
 
@@ -182,16 +189,36 @@ def test_the_running_service_agrees_with_the_declaration():
     blob = binary.read_bytes()
     # The port reaches the binary as a decimal string in the argument list.
     assert str(port).encode() in blob, (
-        f"the installed app does not carry port {port} from apps/desktop/api-port.txt; "
+        f"the installed app does not carry port {port} from apps/shared/api-port.txt; "
         f"it was built before the port had a single source, and a dev build "
         f"pointing at it will talk to the wrong process"
     )
 
 
-def test_vite_can_resolve_the_declaration_path():
-    """`?raw` only works if the file is inside the Vite project root."""
-    assert (DESKTOP_ROOT / "api-port.txt").is_file()
-    assert DECLARATION.parent == DESKTOP_ROOT
+def test_both_frontends_resolve_the_shared_tree():
+    """There are two Vite apps now, and they must agree on the declaration.
+
+    This used to assert the declaration sat inside the desktop project root,
+    on the theory that ``?raw`` needs it there. That is not how Vite works —
+    ``?raw`` resolves through the alias and the filesystem, which is why the
+    console builds fine with the file outside *both* project roots. So the
+    assertion is now the one that actually predicts breakage: if either app
+    drops its ``@shared`` alias, its `?raw` import stops resolving and its
+    build fails, and this fails first with a readable message.
+    """
+    assert DECLARATION.is_file(), f"{DECLARATION} is the single source and is missing"
+    assert DECLARATION.parent == SHARED_ROOT
+
+    for app in ("desktop", "admin_console"):
+        config = (REPO_ROOT / "apps" / app / "vite.config.ts").read_text(encoding="utf-8")
+        assert "@shared" in config, (
+            f"apps/{app}/vite.config.ts has no @shared alias, so its "
+            f"frontend cannot read apps/shared/api-port.txt"
+        )
+        assert '"../shared"' in config, (
+            f"apps/{app}/vite.config.ts aliases @shared somewhere other than "
+            f"apps/shared, so it reads a different declaration than the other app"
+        )
 
 
 def test_the_declaration_is_not_mistaken_for_configuration():

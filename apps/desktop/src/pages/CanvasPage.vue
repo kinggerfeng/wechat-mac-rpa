@@ -17,10 +17,10 @@ import NodeCard from "../components/canvas/NodeCard.vue";
 import NodePalette from "../components/canvas/NodePalette.vue";
 import RecorderPanel from "../components/RecorderPanel.vue";
 import TracePanel from "../components/canvas/TracePanel.vue";
-import { api } from "../api/client";
+import { api } from "@shared/api/client";
 import { useFlowStore } from "../stores/flow";
 import { useTraceStore } from "../stores/trace";
-import type { LocatePath } from "../types";
+import type { LocatePath } from "@shared/types";
 
 const route = useRoute();
 const router = useRouter();

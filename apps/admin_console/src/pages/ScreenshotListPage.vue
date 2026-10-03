@@ -2,16 +2,16 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import { useEngineStore } from "../stores/engine";
-import type { ScreenshotRow } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import { useConnectionStore } from "../stores/connection";
+import type { ScreenshotRow } from "@shared/types";
 
 const DASH = "—";
 
 const PAGE_SIZES = [24, 48, 96];
 const SKELETON_TILES = 12;
 
-const engine = useEngineStore();
+const connection = useConnectionStore();
 
 const rows = ref<ScreenshotRow[]>([]);
 const total = ref(0);
@@ -98,7 +98,7 @@ onMounted(() => void load());
         <h1>截图</h1>
         <p class="head-note muted">
           每个 tick 在微信窗口上的截图，按时间倒序。点任意一张进入详情，那里能看到这一轮的
-          元数据、Judge 分和实际发出的回复。数据更新于 {{ engine.lastUpdated || DASH }}。
+          元数据、Judge 分和实际发出的回复。数据更新于 {{ connection.lastUpdated || DASH }}。
         </p>
       </div>
       <div class="head-actions">
@@ -107,7 +107,7 @@ onMounted(() => void load());
     </header>
 
     <el-alert
-      v-if="engine.online === false"
+      v-if="connection.online === false"
       class="notice"
       type="warning"
       show-icon

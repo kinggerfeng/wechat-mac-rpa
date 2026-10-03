@@ -7,7 +7,7 @@
 // so a designer can tell "ok" from "error" without hovering.
 
 import { computed } from "vue";
-import type { FlowEdge, FlowNode } from "../../types";
+import type { FlowEdge, FlowNode } from "@shared/types";
 
 const props = defineProps<{
   edges: FlowEdge[];

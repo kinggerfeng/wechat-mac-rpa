@@ -3,10 +3,10 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { CopyDocument, Delete, Plus, Refresh, VideoPlay } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import { useEngineStore } from "../stores/engine";
 import { useFlowStore } from "../stores/flow";
-import type { FlowGraph, FlowSummary } from "../types";
+import type { FlowGraph, FlowSummary } from "@shared/types";
 
 const DASH = "—";
 

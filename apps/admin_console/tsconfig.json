@@ -20,5 +20,5 @@
     "paths": { "@/*": ["./src/*"], "@shared/*": ["../shared/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts", "../shared/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src-tauri"]
+  "exclude": ["node_modules", "dist"]
 }

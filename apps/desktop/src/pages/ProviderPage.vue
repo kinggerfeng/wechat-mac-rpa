@@ -3,8 +3,8 @@ import { computed, onMounted, ref } from "vue";
 import { Delete, EditPen, Plus, Refresh, Cpu } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import { api, ApiError } from "../api/client";
-import type { LLMProvider } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { LLMProvider } from "@shared/types";
 
 const DASH = "—";
 

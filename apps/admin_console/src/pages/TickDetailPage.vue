@@ -4,8 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, DocumentCopy, Refresh } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 
-import { api, ApiError } from "../api/client";
-import type { TickDetail } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { TickDetail } from "@shared/types";
 
 const DASH = "—";
 

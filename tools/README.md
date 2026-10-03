@@ -14,7 +14,6 @@ that fits none of them does not belong in this tree.
 | `persona/` | Building, de-identifying and evaluating the few-shot persona sample set. |
 | `wiki/` | Generating wiki pages, contradiction detection, fact cleaning, memory lint. |
 | `ops/` | Environment setup, key retrieval, the privacy gate, the doc linter, the GitHub star chart. |
-| `server/` | Service entry points. `admin.py` is the legacy developer backend and is being retired in favour of `services/company_api/`. |
 
 ## Rules
 

@@ -7,8 +7,8 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
-import { api, ApiError } from "../api/client";
-import type { BotStatus, DashboardSummary, PermissionReport } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { BotStatus, DashboardSummary, PermissionReport } from "@shared/types";
 
 const POLL_MS = 3000;
 

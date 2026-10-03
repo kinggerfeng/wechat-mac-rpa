@@ -4,10 +4,10 @@ import { Aim, Delete, Plus, Refresh, Search } from "@element-plus/icons-vue";
 
 import ElementPickerDialog from "../components/ElementPickerDialog.vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import { useEngineStore } from "../stores/engine";
 import { useFlowStore } from "../stores/flow";
-import type { Element, Located } from "../types";
+import type { Element, Located } from "@shared/types";
 
 const DASH = "—";
 

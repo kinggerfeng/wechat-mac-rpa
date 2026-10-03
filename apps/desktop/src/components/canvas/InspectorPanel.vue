@@ -9,8 +9,8 @@
 import { computed, toRef } from "vue";
 import VariablePicker from "./VariablePicker.vue";
 import { useVariableCatalog } from "../../composables/useVariableCatalog";
-import type { FlowEdge, FlowGraph, FlowNode, LocatePath, NodeSpec, ValidationIssue } from "../../types";
-import { LOCATE_PATHS, PATH_HINTS, PATH_LABELS } from "../../types";
+import type { FlowEdge, FlowGraph, FlowNode, LocatePath, NodeSpec, ValidationIssue } from "@shared/types";
+import { LOCATE_PATHS, PATH_HINTS, PATH_LABELS } from "@shared/types";
 
 const props = defineProps<{
   node: FlowNode | null;

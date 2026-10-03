@@ -60,7 +60,7 @@ import type {
  * and a request that switched origins would be a cross-instance read nobody
  * asked for.
  */
-import apiPortDeclaration from "../../api-port.txt?raw";
+import apiPortDeclaration from "../api-port.txt?raw";
 
 const API_PORT = Number(apiPortDeclaration.trim());
 

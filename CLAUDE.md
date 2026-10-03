@@ -52,7 +52,8 @@ apps/
     layout/                      # 微信窗口布局解析
     cli.py                       # 无头入口：python -m apps.engine.cli
   desktop/                        # Tauri + Vue 3 桌面壳（画布 + 全部页面）
-  admin_console/                  # 旧开发者后台 :8766（待退役，勿在新文档引用）
+  admin_console/                  # 运营平台（独立 Vue 应用，13 页，浏览器访问）
+  shared/                         # 两前端共用：API 客户端 / 契约 / 主题 / 端口声明
 services/
   company_api/                    # 桌面 API（FastAPI，Tauri 以 uvicorn 拉起）
     app.py rpa_api.py cases_api.py record_api.py surface.py
@@ -76,5 +77,5 @@ data/rpa.db                      # RPA 域数据（不与 cases.db 混用）
 | 文件 | 加载时机 | 内容 |
 |------|---------|------|
 | `CLAUDE.md` | 每次会话 | 核心铁律 + 速查 |
-| `.claude/rules/frontend.md` | 改 admin.py 时 | Playwright 验证 |
+| `.claude/rules/frontend.md` | 改 apps/desktop 或 apps/admin_console 时 | Playwright 验证 |
 | `.claude/rules/debugging.md` | 改 rpa/ 时 | 调试流程 + 常见坑 |

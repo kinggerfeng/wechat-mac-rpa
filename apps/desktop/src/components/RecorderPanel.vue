@@ -10,8 +10,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { VideoPause, VideoPlay } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import type { RecordedAction, RecordStatus, RecordStopResult } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { RecordedAction, RecordStatus, RecordStopResult } from "@shared/types";
 
 const emit = defineEmits<{ committed: [string] }>();
 

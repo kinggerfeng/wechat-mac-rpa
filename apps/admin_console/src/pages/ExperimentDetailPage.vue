@@ -8,8 +8,8 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Back, Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
-import type { ExperimentContext, ExperimentDetail, ExperimentResult } from "../types";
+import { api, ApiError } from "@shared/api/client";
+import type { ExperimentContext, ExperimentDetail, ExperimentResult } from "@shared/types";
 
 const DASH = "—";
 

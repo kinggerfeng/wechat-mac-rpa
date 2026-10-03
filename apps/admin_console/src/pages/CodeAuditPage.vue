@@ -6,14 +6,14 @@
 import { computed, onMounted, ref } from "vue";
 import { Refresh, Search } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import {
   CODE_AUDIT_STATUSES,
   CODE_AUDIT_STATUS_LABELS,
   type CodeAuditIssue,
   type CodeAuditState,
   type CodeAuditStatus,
-} from "../types";
+} from "@shared/types";
 
 const DASH = "—";
 

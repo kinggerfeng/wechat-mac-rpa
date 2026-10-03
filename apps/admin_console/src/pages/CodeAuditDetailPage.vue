@@ -8,14 +8,14 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Back, Refresh } from "@element-plus/icons-vue";
 
-import { api, ApiError } from "../api/client";
+import { api, ApiError } from "@shared/api/client";
 import {
   CODE_AUDIT_STATUSES,
   CODE_AUDIT_STATUS_LABELS,
   type CodeAuditDetailResponse,
   type CodeAuditRound,
   type CodeAuditStatus,
-} from "../types";
+} from "@shared/types";
 
 const DASH = "—";
 

@@ -43,15 +43,21 @@
 ## 项目速查
 
 ```
-rpa/                             # 单一 Python 包（源码根，非 src-layout）
-  bot/wechat_bot.py              # L5 主循环
-  flow/                          # RPA 编排引擎（与 wechat_bot.py 并存不替换）
+apps/
+  engine/                         # RPA 编排引擎（Python，可脱离 UI 单独驱动）
     registry.py                  # 节点注册表，74 个节点
     expr.py                      # ast 白名单表达式求值器（禁用 eval）
     executor.py                  # 执行器
     strategy.py                  # 双路径定位唯一入口 resolve()
-  backend/                       # 桌面 API（FastAPI，Tauri 以 uvicorn 拉起）
-    app.py rpa_api.py cases_api.py record_api.py
+    layout/                      # 微信窗口布局解析
+    cli.py                       # 无头入口：python -m apps.engine.cli
+  desktop/                        # Tauri + Vue 3 桌面壳（画布 + 全部页面）
+  admin_console/                  # 旧开发者后台 :8766（待退役，勿在新文档引用）
+services/
+  company_api/                    # 桌面 API（FastAPI，Tauri 以 uvicorn 拉起）
+    app.py rpa_api.py cases_api.py record_api.py surface.py
+rpa/                             # 旧 L1–L5 bot + 平台原语（与 engine 并存不替换）
+  bot/wechat_bot.py              # L5 主循环
   db/                            # 聊天记录 SQLite（唯一权威源）
   reply/generator.py             # L4 回复生成
   badcase/judge_worker.py        # Judge 评分
@@ -60,8 +66,7 @@ rpa/                             # 单一 Python 包（源码根，非 src-layou
   action/system_automation.py    # RPA 原语 ABC（macOS 实现 + NoOp）
   capture/window_capture.py      # 窗口截图
 tests/                           # 统一测试入口（tests/e2e 需真机）
-tools/                           # 一次性脚本，按域分 bench/data/persona/wiki/ops/server
-  server/admin.py                # 旧开发者后台 :8766（待退役，勿在新文档引用）
+tools/                           # 一次性脚本，按域分 bench/data/persona/wiki/ops
 data/persona.md                  # Bot 私人人设（Git 忽略）
 data/rpa.db                      # RPA 域数据（不与 cases.db 混用）
 ```

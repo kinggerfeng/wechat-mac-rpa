@@ -17,9 +17,9 @@ from __future__ import annotations
 import pytest
 
 
-from rpa.flow.control_nodes import REGION_CLOSERS, REGION_OPEN, compute_regions  # noqa: E402
-from rpa.flow.executor import FlowExecutor  # noqa: E402
-from rpa.flow.schema import Flow, Node, NodeError  # noqa: E402
+from apps.engine.control_nodes import REGION_CLOSERS, REGION_OPEN, compute_regions  # noqa: E402
+from apps.engine.executor import FlowExecutor  # noqa: E402
+from apps.engine.schema import Flow, Node, NodeError  # noqa: E402
 
 
 def _flow(nodes, edges, entry="a", variables=None):
@@ -65,8 +65,8 @@ def _run(nodes, edges, **kw):
 
 def _boom_node(node_id="boom", **kw):
     """A node that always raises ``NodeError``, registered for the test."""
-    from rpa.flow import builtin_nodes
-    from rpa.flow.registry import NodeSpec, get_node_registry
+    from apps.engine import builtin_nodes
+    from apps.engine.registry import NodeSpec, get_node_registry
 
     class Boom(builtin_nodes.BaseNode):
         def execute(self):
@@ -219,7 +219,7 @@ def _graph_pairs(nodes, edges):
     parsed = {n["id"]: Node.from_dict(n) for n in nodes}
     indexed: dict[str, list] = {}
     for raw in edges:
-        from rpa.flow.schema import Edge
+        from apps.engine.schema import Edge
 
         edge = Edge.from_dict(raw)
         indexed.setdefault(edge.source, []).append(edge)
@@ -351,7 +351,7 @@ def test_a_flow_with_no_regions_resolves_to_nothing():
 
 
 def test_the_closer_constants_match_the_registered_node_types():
-    from rpa.flow.registry import get_node_registry
+    from apps.engine.registry import get_node_registry
 
     types = set(get_node_registry().types())
     assert REGION_OPEN in types

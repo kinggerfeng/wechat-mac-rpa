@@ -15,7 +15,7 @@ import pytest
 cv2 = pytest.importorskip("cv2")
 numpy = pytest.importorskip("numpy")
 
-from rpa.flow import vision_match
+from apps.engine import vision_match
 
 
 def _scene(tmp_path) -> str:
@@ -184,7 +184,7 @@ class TestImageNodes:
 
     @staticmethod
     def _flow(node_type: str, params: dict, variables: dict | None = None) -> "Flow":
-        from rpa.flow.schema import Flow
+        from apps.engine.schema import Flow
 
         return Flow(id="f_img", name="img", graph={
             "version": 1, "entry": "n1", "default_path": "auto",
@@ -200,7 +200,7 @@ class TestImageNodes:
 
     @staticmethod
     def _run(node_type: str, params: dict, variables: dict | None = None):
-        from rpa.flow.executor import FlowExecutor
+        from apps.engine.executor import FlowExecutor
 
         return FlowExecutor().run(
             TestImageNodes._flow(node_type, params, variables), "run_img")

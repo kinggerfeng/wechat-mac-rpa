@@ -131,7 +131,7 @@ no_reply_chats = {"腾讯新闻", "文件传输助手"}
 如果根因是 **Profile 绝对坐标在窗口尺寸变化时失效**，检查所有使用绝对坐标的字段：
 
 ```python
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 p = PROFILE_WECHAT_MAC_1760X1280
 
 # 截图实际尺寸
@@ -194,7 +194,7 @@ for e in d['ocr_elements']:
 # 若 y > title_y_max（默认 95），则会被过滤
 ```
 
-**修复：** 调整 `rpa/layout/profile.py` 中的 `title_y_max`。
+**修复：** 调整 `apps/engine/layout/profile.py` 中的 `title_y_max`。
 
 ### 3.2 messages 为空但 clusters 有数据
 

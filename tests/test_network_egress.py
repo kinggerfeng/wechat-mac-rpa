@@ -24,7 +24,7 @@ Scope, stated so it is a decision and not an accident:
 * Scanned: ``rpa/`` and the root entry scripts. That is what ships.
 * Not scanned: ``tools/`` (one-off developer scripts, ~15 files, several of
   them stale ``legacy/`` experiments), ``third_party/reference/`` (vendored
-  upstream source we do not ship), ``rpa/backend/`` (it dials the local API and
+  upstream source we do not ship), ``services/company_api/`` (it dials the local API and
   nothing else). None of these reach the network in a user install; if that
   changes, this file is the place that says so.
 * ``tests/`` is excluded for the same reason.

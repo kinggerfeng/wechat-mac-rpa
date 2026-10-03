@@ -44,9 +44,9 @@ def _load_env():
 _load_env()
 
 from rpa.ocr.vision_ocr import VisionOCREngine
-from rpa.layout.layout_parser import LayoutParser
+from apps.engine.layout.layout_parser import LayoutParser
 from rpa.message.extractor import MessageExtractor
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 
 try:
     from openai import OpenAI

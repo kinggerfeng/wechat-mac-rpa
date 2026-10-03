@@ -238,7 +238,7 @@ for e in sorted(candidates, key=lambda x: x['center']['y']):
     print(f'"{e["text"]}" y={e["center"]["y"]}')
 
 # 当前配置值
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 print(f"当前 title_y_max = {PROFILE_WECHAT_MAC_1760X1280.title_y_max}")
 # 如果最大标题 y > title_y_max → 需要增大配置
 ```
@@ -289,7 +289,7 @@ from pathlib import Path
 from PIL import Image
 img = Image.open(Path(d['screenshot_path']))
 print(f"\n截图高度: {img.height}")
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 print(f"Profile 窗口高度: {PROFILE_WECHAT_MAC_1760X1280.window_height}")
 print(f"Profile input_y_min: {PROFILE_WECHAT_MAC_1760X1280.input_y_min}")
 print(f"按高度比例应调整至: {int(PROFILE_WECHAT_MAC_1760X1280.input_y_min * img.height / PROFILE_WECHAT_MAC_1760X1280.window_height)}")

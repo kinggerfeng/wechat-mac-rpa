@@ -39,7 +39,7 @@
   - 手动重启：`launchctl kickstart -k gui/$(id -u)/com.wechat-mac-rpa.admin`
   - 停止服务：`launchctl bootout gui/$(id -u)/com.wechat-mac-rpa.admin`
   - 日志：`tail -f logs/admin-launchd.log logs/admin.log`
-  - 前台调试用：`python3 tools/server/admin.py`
+  - 前台调试用：`python3 apps/admin_console/admin.py`
 - **测试**：开发环境先执行 `pip install -r requirements-dev.txt`，再运行 `python3 -m pytest rpa/tests -v`
 - **OCR Benchmark**：`python3 tools/bench/benchmark_qwen_vl_ocr.py`
 - **生成报告**：`python3 tools/bench/generate_ocr_benchmark_report.py`
@@ -349,7 +349,7 @@ Judge 一旦可信，回路二就可以大规模自动化运转，**人工不再
 ## 工程基础设施
 
 - **Benchmark Dashboard**：自动生成可视化报告，汇总各 benchmark 的历史趋势与当前状态
-- **管理后台**：内置 FastAPI 开发者后台（`tools/server/admin.py`），提供 Dashboard、Tick 查看、人工标注、截图 OCR、Benchmark 报告、实验管理
+- **管理后台**：内置 FastAPI 开发者后台（`apps/admin_console/admin.py`），提供 Dashboard、Tick 查看、人工标注、截图 OCR、Benchmark 报告、实验管理
 - **全链路 Profile**：整个链路植入统一的性能打点，覆盖截图、OCR、布局、生成、记忆、发送各阶段
 
 ---

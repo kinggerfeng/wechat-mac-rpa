@@ -23,7 +23,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-_logger = logging.getLogger("rpa.flow.vision_match")
+_logger = logging.getLogger("apps.engine.vision_match")
 
 #: Below this the result is a different image, not a scaled or antialiased
 #: copy of the same control. Exposed so a flow can raise it for an exact check

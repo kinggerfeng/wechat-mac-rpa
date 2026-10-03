@@ -1,6 +1,6 @@
 """The shipped build is a decision, not an accident.
 
-``rpa.backend.app`` used to mount every router unconditionally, so importing
+``services.company_api.app`` used to mount every router unconditionally, so importing
 it pulled four ``rpa.badcase`` modules into the process whether or not the
 customer's build needed them. The quality loop — badcase review, ground-truth
 labelling, benchmark reports, experiment comparison, code audit — is how the
@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PROBE = """
 import sys
 sys.path.insert(0, {root!r})
-import rpa.backend.app as m
+import services.company_api.app as m
 paths = set(m.app.openapi()["paths"])
 print(len(paths))
 print(len([p for p in paths if p.startswith("/api/cases")]))
@@ -77,9 +77,9 @@ def test_a_development_build_keeps_everything():
 
 
 def test_the_flag_is_documented_where_it_is_read():
-    text = (REPO_ROOT / "rpa" / "backend" / "app.py").read_text(encoding="utf-8")
+    text = (REPO_ROOT / "services" / "company_api" / "app.py").read_text(encoding="utf-8")
     assert "RPA_DESKTOP_INTERNAL" in text
-    surface = (REPO_ROOT / "rpa" / "backend" / "surface.py").read_text(encoding="utf-8")
+    surface = (REPO_ROOT / "services" / "company_api" / "surface.py").read_text(encoding="utf-8")
     assert "RPA_DESKTOP_INTERNAL" not in surface or "INCLUDE_INTERNAL" in surface
 
 
@@ -89,7 +89,7 @@ def test_every_router_is_registered_in_one_of_the_two_lists():
     Adding a router and forgetting to classify it is the exact way internal
     tooling ends up in a customer build again.
     """
-    from rpa.backend.surface import INTERNAL_ROUTERS, SHIPPED_ROUTERS, should_mount
+    from services.company_api.surface import INTERNAL_ROUTERS, SHIPPED_ROUTERS, should_mount
 
     assert set(SHIPPED_ROUTERS) & set(INTERNAL_ROUTERS) == set()
     for name in (*SHIPPED_ROUTERS, *INTERNAL_ROUTERS):

@@ -274,7 +274,7 @@ class VisionOCREngine:
 
 ### 2.4 LayoutProfile (L2)
 
-**文件**: `rpa/layout/profile.py`
+**文件**: `apps/engine/layout/profile.py`
 
 **职责**: 把写死的布局常量提取为配置对象。
 
@@ -340,7 +340,7 @@ PROFILE_WECHAT_MAC_1760X1280 = LayoutProfile(
 
 ### 2.5 Layout Parser (L3)
 
-**文件**: `rpa/layout/layout_parser.py`
+**文件**: `apps/engine/layout/layout_parser.py`
 
 **职责**: 把 OCR 元素按 UI 区域分组。输出 `UILayout`。
 

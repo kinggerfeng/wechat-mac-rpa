@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from rpa.flow.code_node import (
+from apps.engine.code_node import (
     MAX_STREAM_CHARS,
     CodeRefused,
     CodeTimeout,

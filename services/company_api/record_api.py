@@ -1,6 +1,6 @@
 """Recording and element-picking routes for the desktop API.
 
-Split out of :mod:`rpa.backend.rpa_api` because these are the only routes
+Split out of :mod:`services.company_api.rpa_api` because these are the only routes
 that interact with the operator's hands rather than with a stored flow: the
 recorder watches what the user does, and the picker turns a rectangle they drew
 into an element. Both are stateful in a way the rest of the API is not, and both
@@ -22,11 +22,11 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from rpa.flow.picker import list_templates, pick_from_rect
-from rpa.flow.recorder import RecorderError, get_recorder
-from rpa.flow.recording_graph import actions_to_graph, actions_to_preview
-from rpa.flow.schema import NodeError, new_id, validate_flow
-from rpa.flow.store import get_store
+from apps.engine.picker import list_templates, pick_from_rect
+from apps.engine.recorder import RecorderError, get_recorder
+from apps.engine.recording_graph import actions_to_graph, actions_to_preview
+from apps.engine.schema import NodeError, new_id, validate_flow
+from apps.engine.store import get_store
 
 router = APIRouter(prefix="/api", tags=["record"])
 
@@ -151,14 +151,14 @@ def record_commit(payload: BuildFlowRequest) -> dict[str, Any]:
 
 
 def get_node_registry_types() -> list[str]:
-    from rpa.flow.registry import get_node_registry
+    from apps.engine.registry import get_node_registry
 
     return get_node_registry().types()
 
 
 def recorder_actions() -> list[Any]:
     """Recorded actions as objects, not dicts, for the commit path."""
-    from rpa.flow.recorder import RecordedAction
+    from apps.engine.recorder import RecordedAction
 
     out: list[RecordedAction] = []
     for row in get_recorder().actions():
@@ -198,9 +198,9 @@ def pick_screenshot(target: str = "wechat") -> dict[str, Any]:
     drawn rectangle back to window coordinates, which is what the element store
     resolves against.
     """
-    from rpa.flow.context import FlowContext, FlowScope
-    from rpa.flow.elements import window_origin
-    from rpa.flow.services import register_default_services
+    from apps.engine.context import FlowContext, FlowScope
+    from apps.engine.elements import window_origin
+    from apps.engine.services import register_default_services
 
     ctx = FlowContext(scope=FlowScope(), run_id="pick", flow_id="pick")
     register_default_services(ctx, dry_run=False)

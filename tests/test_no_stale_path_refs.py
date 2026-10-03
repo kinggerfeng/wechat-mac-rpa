@@ -5,7 +5,7 @@ where it is used rather than where it is written:
 
 * ``scripts/`` -> ``tools/{bench,data,persona,wiki,ops,server}``
 * ``src/`` -> ``rpa/``
-* ``rpa/backend/`` -> ``rpa/backend/``
+* ``services/company_api/`` -> ``services/company_api/``
 
 A stale reference is not a compile error. ``import scripts.sync_knowledge`` and
 ``subprocess.run(["python3", "scripts/doc_lint.py"])`` both work right up to the
@@ -43,7 +43,7 @@ SKIP_ANY = {"__pycache__", "node_modules", "target", "dist",
 SKIP_TREES = (("apps", "desktop", "src"), ("apps", "desktop", "dist"), ("apps", "desktop", "src-tauri", "target"))
 
 #: Only files that can break at run time. ``.rs`` is here because the Tauri
-#: shell is what launches the Python API — ``rpa.backend.app:app`` is a string
+#: shell is what launches the Python API — ``services.company_api.app:app`` is a string
 #: the Rust binary passes to uvicorn, and nothing else would notice it rot.
 #: ``tests/`` is skipped so this test does not assert on its own source.
 CODE_SUFFIXES = {".py", ".sh", ".command", ".yml", ".yaml", ".toml", ".ts", ".vue", ".rs"}
@@ -182,7 +182,7 @@ def test_no_executable_file_references_the_old_python_root(relative: Path):
     stale = sorted(set(RETIRED_PYTHON.findall(text)))
     assert not stale, (
         f"{relative.as_posix()} still references {stale} — the package is now "
-        f"rpa/, and the desktop API is rpa.backend"
+        f"rpa/, and the desktop API is services.company_api"
     )
 
 
@@ -210,18 +210,65 @@ def test_the_vue_app_still_typechecks_its_own_sources():
     assert (REPO_ROOT / "apps" / "desktop" / "src").is_dir(), "the frontend source directory is gone"
 
 
-def test_the_two_rpa_trees_are_the_same_package():
-    """The desktop API and the engine must import as one namespace.
+def test_the_three_trees_import_from_one_root():
+    """Engine, desktop API and the legacy bot must resolve from one sys.path root.
 
-    They were separate roots (``rpa.`` and ``rpa.backend``) reachable only
-    because each did its own ``sys.path.insert``. If they drift apart the
-    scheduler lock and the flow engine stop being able to see the same
-    ``rpa.db``.
+    They are three top-level packages now — ``apps.engine``,
+    ``services.company_api`` and ``rpa`` — which is what makes each of them
+    separately packageable. The cost of that is that they can drift: if one
+    ever reaches the others by inserting its own directory onto ``sys.path``
+    instead of relying on the repository root, the scheduler lock and the flow
+    engine stop seeing the same ``rpa.db``, and every surface still looks fine.
+
+    So the invariant is not "one package" any more. It is: importable together,
+    from the repository root, with nobody cheating on ``sys.path``.
     """
+    import apps.engine
     import rpa
-    import rpa.backend
-    import rpa.flow
+    import services.company_api
 
-    assert rpa.__name__ == "rpa"
-    for module in (rpa.backend, rpa.flow):
-        assert module.__name__.startswith("rpa.")
+    root = str(REPO_ROOT)
+    for module in (apps.engine, services.company_api, rpa):
+        location = getattr(module, "__file__", None) or str(getattr(module, "__path__", [""])[0])
+        assert str(Path(location).resolve()).startswith(root), (
+            f"{module.__name__} resolved outside the repository root: {location}"
+        )
+
+
+def test_no_tree_inserts_its_own_directory_into_sys_path():
+    """Importing a package must not change what its siblings can see.
+
+    The cheat this catches is a package that reaches another one by inserting
+    its *own* directory onto ``sys.path``: it then imports fine on its own and
+    is invisible to everything else, so the failure surfaces later as one
+    process's engine not finding a file, looking like a packaging bug.
+
+    Checked by importing for real rather than by reading the lines, because
+    every one of these packages legitimately contains a guarded
+    ``sys.path.insert(0, PROJECT_ROOT)`` for the case where it is run
+    standalone — text matching cannot tell that apart from a sibling-directory
+    insert, and guessing would make the test either useless or noisy.
+
+    Run in a subprocess so the parent's already-warm ``sys.path`` cannot mask
+    a mutation.
+    """
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys\n"
+        "before = list(sys.path)\n"
+        "import rpa, apps.engine, services.company_api\n"
+        "added = [p for p in sys.path if p not in before]\n"
+        "print(repr(added))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, f"import probe failed:\n{result.stderr[-2000:]}"
+    assert result.stdout.strip() == "[]", (
+        f"importing the packages added {result.stdout.strip()} to sys.path. "
+        f"Everything resolves from the repository root; a package that patches "
+        f"sys.path is importable alone and invisible to its siblings."
+    )

@@ -14,15 +14,15 @@ import time
 import pytest
 
 
-from rpa.flow.recorder import ActionRecorder, RecorderError, RecordedAction  # noqa: E402
-from rpa.flow.recording_graph import (  # noqa: E402
+from apps.engine.recorder import ActionRecorder, RecorderError, RecordedAction  # noqa: E402
+from apps.engine.recording_graph import (  # noqa: E402
     _MAX_SYNTHETIC_WAIT,
     _WAIT_THRESHOLD,
     actions_to_graph,
     actions_to_preview,
 )
-from rpa.flow.registry import get_node_registry  # noqa: E402
-from rpa.flow.schema import validate_flow  # noqa: E402
+from apps.engine.registry import get_node_registry  # noqa: E402
+from apps.engine.schema import validate_flow  # noqa: E402
 
 
 def _act(kind, at=0.0, **kw):
@@ -65,8 +65,8 @@ def test_clicks_become_click_nodes_in_order():
 
 def test_generated_graph_is_actually_runnable():
     """The strongest check: the produced graph executes to completion."""
-    from rpa.flow.executor import FlowExecutor
-    from rpa.flow.schema import Flow
+    from apps.engine.executor import FlowExecutor
+    from apps.engine.schema import Flow
 
     actions = [_act("log_ok", at=0.0)]  # unknown kind -> log node, safe to run
     graph = actions_to_graph(actions)

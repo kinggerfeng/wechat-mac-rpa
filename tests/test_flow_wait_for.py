@@ -20,9 +20,9 @@ from types import SimpleNamespace
 import pytest
 
 
-from rpa.flow.context import FlowContext, FlowScope
-from rpa.flow.registry import BaseNode, get_node_registry
-from rpa.flow.schema import NodeAborted, NodeError
+from apps.engine.context import FlowContext, FlowScope
+from apps.engine.registry import BaseNode, get_node_registry
+from apps.engine.schema import NodeAborted, NodeError
 
 cv2 = pytest.importorskip("cv2")
 numpy = pytest.importorskip("numpy")
@@ -337,8 +337,8 @@ class TestThroughTheExecutor:
 
     @staticmethod
     def _run(graph, ocr):
-        from rpa.flow.executor import FlowExecutor
-        from rpa.flow.schema import Flow
+        from apps.engine.executor import FlowExecutor
+        from apps.engine.schema import Flow
 
         executor = FlowExecutor(get_node_registry())
         executor.setup_context = lambda ctx: ctx.services.__setitem__("ocr", ocr)
@@ -363,8 +363,8 @@ class TestThroughTheExecutor:
         duplicate entry in a trace is not a node that ran twice."""
         graph = self._graph(tmp_path)
         spans: list[tuple[str, str]] = []
-        from rpa.flow.executor import FlowExecutor
-        from rpa.flow.schema import Flow
+        from apps.engine.executor import FlowExecutor
+        from apps.engine.schema import Flow
 
         executor = FlowExecutor(get_node_registry())
         executor.setup_context = lambda ctx: ctx.services.__setitem__(

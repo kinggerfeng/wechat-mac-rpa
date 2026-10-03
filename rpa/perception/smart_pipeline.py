@@ -25,8 +25,8 @@ import numpy as np
 from PIL import Image
 
 from rpa.capture.window_capture import WeChatNotReadyError, WindowCapture
-from rpa.layout.layout_parser import TIMESTAMP_PATTERNS, LayoutParser, UILayout
-from rpa.layout.profile import LayoutProfile
+from apps.engine.layout.layout_parser import TIMESTAMP_PATTERNS, LayoutParser, UILayout
+from apps.engine.layout.profile import LayoutProfile
 from rpa.models.base import MEDIA_MESSAGE_TYPES, ChatListItem, ChatMessage, PerceptionResult, Rect, SenderType
 from rpa.ocr.vision_ocr import VisionOCREngine
 from rpa.utils.chat_utils import _is_group_chat_name

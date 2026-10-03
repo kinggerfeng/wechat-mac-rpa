@@ -12,11 +12,11 @@ from __future__ import annotations
 import pytest
 
 
-from rpa.flow.control_nodes import MAX_SUBFLOW_DEPTH  # noqa: E402
-from rpa.flow.executor import FlowExecutor  # noqa: E402
-from rpa.flow.registry import get_node_registry  # noqa: E402
-from rpa.flow.schema import Flow, NodeError, validate_flow  # noqa: E402
-from rpa.flow.store import RpaStore  # noqa: E402
+from apps.engine.control_nodes import MAX_SUBFLOW_DEPTH  # noqa: E402
+from apps.engine.executor import FlowExecutor  # noqa: E402
+from apps.engine.registry import get_node_registry  # noqa: E402
+from apps.engine.schema import Flow, NodeError, validate_flow  # noqa: E402
+from apps.engine.store import RpaStore  # noqa: E402
 
 
 def _flow(nodes, edges, entry="a", variables=None):
@@ -180,8 +180,8 @@ def test_foreach_rejects_a_missing_collection_variable():
 
 def test_catch_receives_a_failure_from_a_branching_node():
     """A node inside the region routes its error to catch, not to the run."""
-    from rpa.flow import builtin_nodes
-    from rpa.flow.registry import NodeSpec
+    from apps.engine import builtin_nodes
+    from apps.engine.registry import NodeSpec
 
     registry = get_node_registry()
 
@@ -211,8 +211,8 @@ def test_catch_receives_a_failure_from_a_branching_node():
 
 
 def test_catch_with_rethrow_fails_the_run():
-    from rpa.flow import builtin_nodes
-    from rpa.flow.registry import NodeSpec
+    from apps.engine import builtin_nodes
+    from apps.engine.registry import NodeSpec
 
     registry = get_node_registry()
 
@@ -266,7 +266,7 @@ def test_call_flow_runs_the_child_and_returns_its_status(tmp_path, monkeypatch):
     )
     # control_nodes imports get_store lazily inside execute(), so the only
     # thing to swap is the module-level singleton it will resolve to.
-    monkeypatch.setattr("rpa.flow.store._store", store)
+    monkeypatch.setattr("apps.engine.store._store", store)
 
     flow = _flow(
         [
@@ -285,7 +285,7 @@ def test_call_flow_on_a_missing_id_fails_with_the_id(tmp_path, monkeypatch):
     store = RpaStore(tmp_path / "rpa.db")
     # control_nodes imports get_store lazily inside execute(), so the only
     # thing to swap is the module-level singleton it will resolve to.
-    monkeypatch.setattr("rpa.flow.store._store", store)
+    monkeypatch.setattr("apps.engine.store._store", store)
 
     flow = _flow([_n("a", "call_flow", params={"flow_id": "ghost"})], [])
     result = FlowExecutor().run(flow, "run_ghost")
@@ -308,7 +308,7 @@ def test_recursive_subflow_hits_the_depth_cap_instead_of_crashing(tmp_path, monk
     )
     # control_nodes imports get_store lazily inside execute(), so the only
     # thing to swap is the module-level singleton it will resolve to.
-    monkeypatch.setattr("rpa.flow.store._store", store)
+    monkeypatch.setattr("apps.engine.store._store", store)
 
     flow = _flow([_n("a", "call_flow", params={"flow_id": "looper"})], [])
     result = FlowExecutor().run(flow, "run_recurse")

@@ -40,7 +40,7 @@ def window_origin(automation: Any) -> tuple[int, int, int, int] | None:
 def locate_element(ctx: FlowContext, name: str) -> "Located | None":
     """Resolve a named element to a ``Located``, or ``None`` if it does not resolve.
 
-    The single Path-A entry point. Mirrors :func:`rpa.flow.strategy.resolve`'s
+    The single Path-A entry point. Mirrors :func:`apps.engine.strategy.resolve`'s
     return type so a caller — or a trace reader — can tell which path produced a
     point without inspecting anything else.
     """

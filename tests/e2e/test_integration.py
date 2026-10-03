@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import Mock
 
 from rpa.perception.vision_pipeline import VisionPipeline
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.bot.wechat_bot import WeChatBot
 from rpa.models.base import ChatMessage, SenderType
 

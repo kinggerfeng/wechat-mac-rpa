@@ -9,8 +9,8 @@ import logging
 from typing import Optional
 
 from rpa.capture.window_capture import WeChatNotReadyError, WindowCapture
-from rpa.layout.layout_parser import LayoutParser
-from rpa.layout.profile import LayoutProfile
+from apps.engine.layout.layout_parser import LayoutParser
+from apps.engine.layout.profile import LayoutProfile
 from rpa.message.extractor import MessageExtractor
 from rpa.models.base import PerceptionResult
 from rpa.ocr.vision_ocr import VisionOCREngine

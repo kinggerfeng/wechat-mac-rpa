@@ -1,9 +1,9 @@
 """Visual RPA flow engine.
 
-A flow is a graph of typed nodes; :mod:`~rpa.flow.executor` walks it, the desktop
-canvas edits it, and both agree on :mod:`~rpa.flow.schema`.
+A flow is a graph of typed nodes; :mod:`~apps.engine.executor` walks it, the desktop
+canvas edits it, and both agree on :mod:`~apps.engine.schema`.
 
-    from rpa.flow import get_node_registry, get_store, get_run_manager
+    from apps.engine import get_node_registry, get_store, get_run_manager
 
     registry = get_node_registry()          # node type catalogue for the canvas
     store = get_store()                     # data/rpa.db

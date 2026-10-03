@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 
 
-from rpa.flow import picker  # noqa: E402
-from rpa.flow.schema import NodeError  # noqa: E402
+from apps.engine import picker  # noqa: E402
+from apps.engine.schema import NodeError  # noqa: E402
 
 pytest.importorskip("PIL")
 
@@ -49,7 +49,7 @@ def test_ocr_text_in_rect_becomes_the_anchor(monkeypatch, tmp_path, shot):
     monkeypatch.setattr(picker, "_text_in_rect", fake)
     monkeypatch.setattr(picker, "TEMPLATE_DIR", tmp_path / "tpl")
     monkeypatch.setattr(
-        "rpa.flow.elements.capture_element",
+        "apps.engine.elements.capture_element",
         lambda **kw: {"id": "e1", "name": kw["name"], "kind": kw["kind"],
                       "ocr_text": kw["ocr_text"], "meta": kw["meta"]},
     )
@@ -67,7 +67,7 @@ def test_a_rectangle_with_no_text_falls_back_to_a_template(monkeypatch, tmp_path
     _no_ocr(monkeypatch)
     monkeypatch.setattr(picker, "TEMPLATE_DIR", tmp_path / "tpl")
     monkeypatch.setattr(
-        "rpa.flow.elements.capture_element",
+        "apps.engine.elements.capture_element",
         lambda **kw: {"id": "e2", "kind": kw["kind"], "image_path": kw["image_path"],
                       "meta": kw["meta"]},
     )
@@ -85,7 +85,7 @@ def test_with_neither_text_nor_template_it_says_it_is_a_plain_rect(monkeypatch, 
     _no_ocr(monkeypatch)
     monkeypatch.setattr(picker, "_save_template", lambda *a, **k: "")
     monkeypatch.setattr(
-        "rpa.flow.elements.capture_element",
+        "apps.engine.elements.capture_element",
         lambda **kw: {"id": "e3", "kind": kw["kind"], "meta": kw["meta"]},
     )
 
@@ -173,7 +173,7 @@ def test_template_names_are_sanitised(monkeypatch, tmp_path, shot):
     _no_ocr(monkeypatch)
     monkeypatch.setattr(picker, "TEMPLATE_DIR", tmp_path / "tpl")
     monkeypatch.setattr(
-        "rpa.flow.elements.capture_element",
+        "apps.engine.elements.capture_element",
         lambda **kw: {"id": "e4", "image_path": kw["image_path"], "meta": kw["meta"]},
     )
     element = picker.pick_from_rect("搜索/框:1", shot, {"x": 100, "y": 100, "width": 20, "height": 20})

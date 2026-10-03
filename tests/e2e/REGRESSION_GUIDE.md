@@ -97,7 +97,7 @@ python3 tests/regression_suite.py --layer docs
 **建议**:
 - 修改 `docs/02-architecture/ARCHITECTURE.md` / `docs/02-architecture/API_SURFACE.md` → 跑 `regression_suite.py --layer docs`
 - 修改 `rpa/session/` → 跑 `regression_suite.py --layer session`
-- 修改 `rpa/layout/` 或 `rpa/message/` → 跑 `regression_suite.py --layer layout`
+- 修改 `apps/engine/layout/` 或 `rpa/message/` → 跑 `regression_suite.py --layer layout`
 - 发现/修复错误 → 跑 `regression_suite.py --layer errors`
 
 ---

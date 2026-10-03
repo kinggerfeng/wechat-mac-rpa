@@ -58,5 +58,5 @@ UILayout(
 
 ## 7. 依赖关系
 - 依赖 `rpa.models.base`
-- 依赖 `rpa.layout.profile.LayoutProfile`
+- 依赖 `apps.engine.layout.profile.LayoutProfile`
 - 被 `rpa.perception` 调用

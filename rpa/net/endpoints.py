@@ -101,7 +101,7 @@ ENDPOINTS: dict[str, Endpoint] = {
             default="https://dashscope.aliyuncs.com/compatible-mode/v1",
             env="DASHSCOPE_BASE_URL",
             disable_env="RPA_DISABLE_DASHSCOPE",
-            what="通义千问视觉定位与 OCR，对应 rpa/flow/vision.py 与 rpa/perception",
+            what="通义千问视觉定位与 OCR，对应 apps/engine/vision.py 与 rpa/perception",
         ),
         Endpoint(
             name="kimi",

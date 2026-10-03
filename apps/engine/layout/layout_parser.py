@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from rpa.layout.profile import LayoutProfile
+from apps.engine.layout.profile import LayoutProfile
 from rpa.models.base import ChatListItem, OCRTextElement, Rect
 
 _logger = logging.getLogger(__name__)

@@ -37,7 +37,7 @@ class OpenClawClient:
         OpenAI = _get_openai_client()
         # Explicit arguments win; otherwise fall back to the environment, then
         # to the original local-gateway defaults. ``.env`` is read by
-        # ``run_bot.py`` and by ``rpa.flow.services._load_env``; the flow
+        # ``run_bot.py`` and by ``apps.engine.services._load_env``; the flow
         # engine's bare ``FlowExecutor`` does neither, so the defaults stay
         # usable with no configuration at all.
         base_url = base_url or os.getenv("OPENCLAW_BASE_URL") or "http://127.0.0.1:18790"

@@ -178,7 +178,7 @@ VisionOCR = VisionOCREngine
 
 ## L3: Layout / Message
 
-### `rpa/layout/profile.py`
+### `apps/engine/layout/profile.py`
 
 **定位**: L2 布局配置
 
@@ -211,7 +211,7 @@ PROFILE_WECHAT_MAC_1760X1280: LayoutProfile
 
 ---
 
-### `rpa/layout/layout_parser.py`
+### `apps/engine/layout/layout_parser.py`
 
 **定位**: L3 布局分组
 

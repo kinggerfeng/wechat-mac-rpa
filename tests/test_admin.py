@@ -1,7 +1,7 @@
 import json
 
-import tools.server.admin as admin
-from tools.server.admin import _expand_persona_few_shots
+import apps.admin_console.admin as admin
+from apps.admin_console.admin import _expand_persona_few_shots
 
 
 def test_expand_persona_few_shots_from_ids(tmp_path, monkeypatch):

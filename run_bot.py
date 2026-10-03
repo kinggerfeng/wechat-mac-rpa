@@ -16,7 +16,7 @@ if env_file.exists():
                 os.environ.setdefault(k.strip(), v.strip())
 
 from rpa.bot.wechat_bot import WeChatBot
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.net.endpoints import base_url as _base_url  # 单一出口：rpa/net/endpoints.py
 from rpa.perception.smart_pipeline import SmartPerceptionPipeline
 from rpa.utils.qwen_client import QwenClient

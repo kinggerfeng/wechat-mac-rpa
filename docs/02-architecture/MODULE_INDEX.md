@@ -13,12 +13,12 @@
 ### "消息识别错了"
 | 现象 | 可能原因 | 修改文件 |
 |------|---------|---------|
-| 聊天名识别错 | title_y_max / title_x_max_ratio 不准 | `rpa/layout/profile.py` |
-| 输入框内容混入消息 | input_y_min 太松 | `rpa/layout/profile.py` |
-| 时间戳被当成消息 | TIMESTAMP_PATTERNS 不完整 | `rpa/layout/layout_parser.py` |
-| 自己消息被当成对方 | 绿色气泡检测失败 | `rpa/layout/layout_parser.py` |
+| 聊天名识别错 | title_y_max / title_x_max_ratio 不准 | `apps/engine/layout/profile.py` |
+| 输入框内容混入消息 | input_y_min 太松 | `apps/engine/layout/profile.py` |
+| 时间戳被当成消息 | TIMESTAMP_PATTERNS 不完整 | `apps/engine/layout/layout_parser.py` |
+| 自己消息被当成对方 | 绿色气泡检测失败 | `apps/engine/layout/layout_parser.py` |
 | 消息顺序错乱 | 提取时未按 y 排序 | `rpa/message/extractor.py` |
-| 昵称识别错 | nickname 区域边界不对 | `rpa/layout/profile.py` |
+| 昵称识别错 | nickname 区域边界不对 | `apps/engine/layout/profile.py` |
 
 ### "回复时机错了"
 | 现象 | 可能原因 | 修改文件 |
@@ -39,7 +39,7 @@
 |------|---------|---------|
 | 发出去是乱码 | 用了 keystroke 输入中文 | `rpa/action/message_sender.py` |
 | 没发出去 | AppleScript 失败 | `rpa/action/message_sender.py` |
-| 切换聊天失败 | 坐标点击未命中或聊天列表未识别 | `rpa/action/ui_interactor.py` / `rpa/layout/layout_parser.py` |
+| 切换聊天失败 | 坐标点击未命中或聊天列表未识别 | `rpa/action/ui_interactor.py` / `apps/engine/layout/layout_parser.py` |
 | 截图失败 | 找不到微信窗口 | `rpa/capture/window_capture.py` |
 
 ### "排查问题找不到信息"
@@ -80,12 +80,12 @@
 - **不改什么**: 过滤、布局解析
 - **Spec**: [specs/OCR_SPEC.md](specs/OCR_SPEC.md)
 
-### `rpa/layout/profile.py`
+### `apps/engine/layout/profile.py`
 - **定位**: L2 配置
 - **改什么**: 所有边界值、颜色阈值
 - **不改什么**: 解析逻辑本身
 
-### `rpa/layout/layout_parser.py`
+### `apps/engine/layout/layout_parser.py`
 - **定位**: L3 布局分组
 - **改什么**: 区域分组算法、时间戳检测、气泡检测
 - **不改什么**: 消息去重、发送逻辑

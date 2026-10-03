@@ -91,7 +91,7 @@ python3 -c "
 import os
 os.environ['DASHSCOPE_API_KEY'] = 'dummy'
 from rpa.bot.wechat_bot import WeChatBot
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.tools import get_registry
 
 class MockLLM:

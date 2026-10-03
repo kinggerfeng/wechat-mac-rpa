@@ -1,12 +1,12 @@
 """Control-flow node types: loops, error trapping, and sub-flow calls.
 
-Split from :mod:`rpa.flow.builtin_nodes` because these are the node types that
+Split from :mod:`apps.engine.builtin_nodes` because these are the node types that
 reason *about the graph itself* rather than about WeChat, and they carry rules
 that are easy to get wrong:
 
 **Loops need no executor change.** A loop is an ordinary node whose ``loop`` port
 is wired back to an earlier node. The executor is a linear cursor, so a back edge
-just re-enters it; the ``max_steps`` ceiling in :mod:`rpa.flow.executor` is what
+just re-enters it; the ``max_steps`` ceiling in :mod:`apps.engine.executor` is what
 actually stops a runaway loop, and the per-node ``max_iterations`` here is what
 stops it *earlier* with a message that names the offending node. The validator
 already permits back edges (it only rejects self-loops), which is what makes this
@@ -121,7 +121,7 @@ class WhileNode(BaseNode):
 
     def _eval(self, expression: str) -> Any:
         raise NotImplementedError(
-            "条件求值已统一到 rpa.flow.expr；旧的 eval() 路径存在代码执行风险，已移除"
+            "条件求值已统一到 apps.engine.expr；旧的 eval() 路径存在代码执行风险，已移除"
         )
 
 

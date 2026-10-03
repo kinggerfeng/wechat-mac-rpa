@@ -215,7 +215,7 @@ def _permission_preflight() -> dict[str, Any]:
     run on every start request — which is exactly where it belongs, because the
     alternative is a bot that starts cleanly and then silently does nothing."""
     try:
-        from rpa.flow.permissions import preflight
+        from apps.engine.permissions import preflight
 
         return preflight()
     except Exception as exc:  # noqa: BLE001
@@ -224,8 +224,8 @@ def _permission_preflight() -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    from rpa.flow.seed import seed
-    from rpa.flow.store import get_store
+    from apps.engine.seed import seed
+    from apps.engine.store import get_store
 
     # First boot writes the shipped flows so the canvas is never empty, and the
     # scheduler starts here rather than on first request so a schedule created
@@ -235,7 +235,7 @@ async def lifespan(_: FastAPI):
     except Exception:  # noqa: BLE001 - a read-only data dir must not block startup
         pass
     try:
-        from rpa.flow.scheduler import get_scheduler
+        from apps.engine.scheduler import get_scheduler
 
         get_scheduler().start()
     except Exception:  # noqa: BLE001
@@ -244,13 +244,13 @@ async def lifespan(_: FastAPI):
     yield
 
     try:
-        from rpa.flow.scheduler import get_scheduler
+        from apps.engine.scheduler import get_scheduler
 
         get_scheduler().stop()
     except Exception:  # noqa: BLE001
         pass
     try:
-        from rpa.flow.runner import get_run_manager
+        from apps.engine.runner import get_run_manager
 
         get_run_manager().abort_all()
     except Exception:  # noqa: BLE001
@@ -262,7 +262,7 @@ async def lifespan(_: FastAPI):
             raise
 
 
-# rpa_api imports rpa.flow at module level, which is a repository-root package.
+# rpa_api imports apps.engine at module level, which is a repository-root package.
 # uvicorn is started with cwd=PROJECT_ROOT but does not put it on sys.path.
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))

@@ -107,7 +107,7 @@ def parse_literal(raw: str) -> Any:
 def evaluate_condition(expression: str, scope: "FlowScope") -> bool:
     """Evaluate a condition expression against ``scope``.
 
-    Delegates to :mod:`rpa.flow.expr`, which parses the whole string. The
+    Delegates to :mod:`apps.engine.expr`, which parses the whole string. The
     previous regex matched only a leading ``operand OP literal`` and silently
     discarded the remainder, so ``count > 5 and enabled`` was evaluated as
     ``count > 5`` alone and reported success — a guard silently downgraded to a

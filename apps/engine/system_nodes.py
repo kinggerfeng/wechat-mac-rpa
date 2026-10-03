@@ -1,6 +1,6 @@
 """Node types that reach outside the RPA graph: shell commands and spreadsheets.
 
-Kept apart from :mod:`rpa.flow.builtin_nodes` because both of these cross a trust
+Kept apart from :mod:`apps.engine.builtin_nodes` because both of these cross a trust
 boundary — one executes a program, one opens a file a user picked — and both
 deserve their guardrails stated in one place instead of scattered.
 

@@ -1,6 +1,6 @@
 """The desktop API routers.
 
-Why this file exists: ``rpa/backend/`` had **no** test at all. The whole
+Why this file exists: ``services/company_api/`` had **no** test at all. The whole
 package is outside ``testpaths``' old default and nothing imported it, so a
 change to any of its 22 cases endpoints could break the app while the rest of
 the suite stayed green. It was verified once with a throwaway script under
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -40,10 +41,10 @@ def cases_db(tmp_path: Path) -> Path:
 def client(cases_db: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """The cases router, pointed at a temp database.
 
-    ``rpa.backend`` is a namespace package with no ``__init__.py``, so it is
+    ``services.company_api`` is a namespace package with no ``__init__.py``, so it is
     imported by path — the same way uvicorn's ``--app-dir python`` reaches it.
     """
-    from rpa.backend import cases_api
+    from services.company_api import cases_api
 
     monkeypatch.setattr(cases_api, "get_db", lambda: CaseDB(cases_db))
     app = FastAPI()
@@ -66,7 +67,12 @@ def _seed_ticks(path: Path, rows: list[tuple]) -> None:
     conn.close()
 
 
-TODAY = "2026-10-02 10:00:00"
+# Derived, not written down. The endpoint filters on ``date.today()``; a
+# hardcoded date here makes the test expire at midnight — it passed every
+# evening and failed the next morning, which reads as a refactor breaking it
+# when nothing did.
+TODAY = f"{date.today().isoformat()} 10:00:00"
+A_DAY_AGO = f"{date.today() - timedelta(days=1)} 10:00:00"
 
 
 # ── shape of the envelope ──────────────────────────────────────────────────
@@ -77,7 +83,7 @@ def test_summary_counts_today_only(client: TestClient, cases_db: Path):
          "raw-1", 2, 3, 120, '["收到"]'),
         ("s1", 2, "张三", TODAY, 0, 80.0, "duplicate", None, None, None, None, 0,
          "raw-2", 0, 3, 90, "[]"),
-        ("s1", 3, "旧会话", "2000-01-01 00:00:00", 1, 100.0, None, None, None, None,
+        ("s1", 3, "旧会话", A_DAY_AGO, 1, 100.0, None, None, None, None,
          None, 0, "raw-3", 1, 1, 50, "[]"),
     ])
     body = client.get("/api/cases/summary").json()
@@ -317,7 +323,7 @@ def test_a_corrupt_review_file_is_500_not_an_empty_worklist(client: TestClient, 
     is no outstanding work. Absence is a real answer and comes back 200 with an
     empty list; corruption is not an answer at all.
     """
-    from rpa.backend import cases_api
+    from services.company_api import cases_api
 
     audit = tmp_path / "wiki_audit"
     audit.mkdir()
@@ -351,7 +357,7 @@ def test_a_missing_benchmark_report_is_omitted_not_shipped_empty(
     empty ``html``, which would draw a blank frame the operator reads as
     "benchmark ran and found nothing".
     """
-    from rpa.backend import cases_api
+    from services.company_api import cases_api
 
     reports = tmp_path / "reports"
     reports.mkdir()
@@ -406,7 +412,7 @@ def test_a_missing_database_answers_200_with_degraded_not_500(tmp_path, monkeypa
     worklist. ``degraded`` is the only thing telling the two apart, which is why
     the frontend types carry it on every cases response.
     """
-    from rpa.backend import cases_api
+    from services.company_api import cases_api
 
     gone = _vanished_db(tmp_path / "cases.db")
     monkeypatch.setattr(cases_api, "get_db", lambda: gone)
@@ -429,7 +435,7 @@ def test_a_missing_database_and_an_empty_one_are_distinguishable(tmp_path, monke
     anything — an endpoint that set the flag unconditionally would pass them
     just as well.
     """
-    from rpa.backend import cases_api
+    from services.company_api import cases_api
 
     live = CaseDB(tmp_path / "live" / "cases.db")
     monkeypatch.setattr(cases_api, "get_db", lambda: live)
@@ -445,7 +451,7 @@ def test_a_missing_database_and_an_empty_one_are_distinguishable(tmp_path, monke
 def test_a_write_against_a_missing_database_is_503_not_a_silent_success(
     tmp_path, monkeypatch
 ):
-    from rpa.backend import cases_api
+    from services.company_api import cases_api
 
     gone = _vanished_db(tmp_path / "cases.db")
     monkeypatch.setattr(cases_api, "get_db", lambda: gone)
@@ -466,7 +472,7 @@ def test_the_desktop_app_mounts_the_cases_router():
     Worth one test: the mount is a side effect of a module-level import, which
     is exactly the kind of wiring a rename or a reorder silently drops.
     """
-    from rpa.backend.app import app as desktop_app
+    from services.company_api.app import app as desktop_app
 
     # `app.routes` holds one lazily-resolved `_IncludedRouter` per mount under
     # this FastAPI, and it has no `.path` — the OpenAPI schema is the only
@@ -483,7 +489,7 @@ def test_the_desktop_app_still_serves_dashboard_summary_from_case_db_path(tmp_pa
     the query through a function that opens the default store instead returns
     the developer's real numbers — or zeros — and the assertion is what caught it.
     """
-    from rpa.backend import app as desktop_module
+    from services.company_api import app as desktop_module
 
     database = tmp_path / "cases.db"
     conn = sqlite3.connect(database)

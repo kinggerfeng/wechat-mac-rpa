@@ -23,8 +23,8 @@ from datetime import datetime
 import pytest
 
 
-from rpa.flow.lease import Lease, read_lease
-from rpa.flow.store import RpaStore
+from apps.engine.lease import Lease, read_lease
+from apps.engine.store import RpaStore
 
 
 class TestLease:
@@ -69,7 +69,7 @@ class TestLease:
         script = (
             "import sys, time;"
             f"sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r});"
-            "from rpa.flow.lease import Lease;"
+            "from apps.engine.lease import Lease;"
             f"l = Lease({str(tmp_path / 's.lock')!r});"
             "print('acquired', l.acquire(), flush=True);"
             "time.sleep(30)"
@@ -199,9 +199,9 @@ def _seed(db: str) -> None:
 _CHILD = """
 import sys, time
 sys.path.insert(0, {root!r})
-from rpa.flow.lease import Lease
-from rpa.flow.scheduler import Scheduler
-from rpa.flow.store import RpaStore
+from apps.engine.lease import Lease
+from apps.engine.scheduler import Scheduler
+from apps.engine.store import RpaStore
 
 db, lock, marker, port = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 sched = Scheduler(store=RpaStore(db), tick_seconds=3600,
@@ -307,7 +307,7 @@ class TestThreeProcesses:
 
 class TestSchedulerUsesTheClaim:
     def test_tick_fires_once_across_two_schedulers_on_one_store(self, tmp_path):
-        from rpa.flow.scheduler import Scheduler
+        from apps.engine.scheduler import Scheduler
 
         path = tmp_path / "rpa.db"
         _seed(str(path))
@@ -330,7 +330,7 @@ class TestSchedulerUsesTheClaim:
     def test_the_fast_path_skip_is_counted_too(self, tmp_path):
         """A standby's stats have to show the skip, or "why did nothing fire"
         is answered by a counter that stayed at zero."""
-        from rpa.flow.scheduler import Scheduler
+        from apps.engine.scheduler import Scheduler
 
         path = tmp_path / "rpa.db"
         _seed(str(path))
@@ -342,7 +342,7 @@ class TestSchedulerUsesTheClaim:
         assert sched.stats.skipped_claimed == 1
 
     def test_standby_reason_is_empty_for_the_holder(self, tmp_path):
-        from rpa.flow.scheduler import Scheduler
+        from apps.engine.scheduler import Scheduler
 
         store = RpaStore(tmp_path / "rpa.db")
         sched = Scheduler(store=store, tick_seconds=5, lease=Lease(tmp_path / "s.lock"))

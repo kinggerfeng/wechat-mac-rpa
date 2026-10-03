@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 
-from rpa.flow.store import RpaStore
+from apps.engine.store import RpaStore
 
 
 @pytest.fixture()
@@ -139,7 +139,7 @@ class TestProviderBackedLLMNode:
     """The llm node must use a provider row without ever hard-coding a key."""
 
     def _flow(self, params):
-        from rpa.flow.schema import Flow
+        from apps.engine.schema import Flow
 
         return Flow(id="f_p", name="p", graph={
             "version": 1, "entry": "n1", "variables": {},
@@ -156,7 +156,7 @@ class TestProviderBackedLLMNode:
 
     def _run(self, params):
         import rpa.llm.openclaw_client as oc
-        from rpa.flow.executor import FlowExecutor
+        from apps.engine.executor import FlowExecutor
 
         seen: dict = {}
 
@@ -177,7 +177,7 @@ class TestProviderBackedLLMNode:
         return result, seen
 
     def test_named_provider_supplies_credentials(self, store, monkeypatch):
-        import rpa.flow.store as store_mod
+        import apps.engine.store as store_mod
         monkeypatch.setattr(store_mod, "_store", store, raising=False)
         saved = store.save_provider({
             "name": "gw", "base_url": "https://gw.example/v1",
@@ -191,7 +191,7 @@ class TestProviderBackedLLMNode:
         assert seen["client_kwargs"]["model"] == "mimo-v2.5"
 
     def test_node_parameter_beats_provider(self, store, monkeypatch):
-        import rpa.flow.store as store_mod
+        import apps.engine.store as store_mod
         monkeypatch.setattr(store_mod, "_store", store, raising=False)
         saved = store.save_provider({
             "name": "gw", "base_url": "https://gw.example/v1",
@@ -208,7 +208,7 @@ class TestProviderBackedLLMNode:
         assert seen["client_kwargs"]["api_key"] == "sk-from-provider"
 
     def test_default_provider_used_when_node_names_none(self, store, monkeypatch):
-        import rpa.flow.store as store_mod
+        import apps.engine.store as store_mod
         monkeypatch.setattr(store_mod, "_store", store, raising=False)
         store.save_provider({
             "name": "gw", "base_url": "https://default.example/v1",
@@ -219,7 +219,7 @@ class TestProviderBackedLLMNode:
         assert seen["client_kwargs"]["base_url"] == "https://default.example/v1"
 
     def test_provider_sampling_defaults_are_inherited(self, store, monkeypatch):
-        import rpa.flow.store as store_mod
+        import apps.engine.store as store_mod
         monkeypatch.setattr(store_mod, "_store", store, raising=False)
         store.save_provider({
             "name": "gw", "base_url": "https://gw/v1", "api_key": "k",
@@ -232,7 +232,7 @@ class TestProviderBackedLLMNode:
 
     def test_unknown_provider_is_an_error(self, store, monkeypatch):
         """Silently calling a different gateway is the bug this prevents."""
-        import rpa.flow.store as store_mod
+        import apps.engine.store as store_mod
         monkeypatch.setattr(store_mod, "_store", store, raising=False)
         store.save_provider({"name": "gw", "base_url": "https://gw/v1",
                              "api_key": "k", "model": "m", "is_default": 1})

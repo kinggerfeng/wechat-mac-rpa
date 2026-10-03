@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from rpa.backend import app as desktop_api
+from services.company_api import app as desktop_api
 
 
 def test_health_and_status_endpoints():

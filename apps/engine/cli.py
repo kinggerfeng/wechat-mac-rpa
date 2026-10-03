@@ -4,12 +4,12 @@
 An RPA that can only be started by clicking a button in its own window is not
 automatable. This is the entry point other systems call:
 
-    python -m rpa.flow.cli run --flow default --once
-    python -m rpa.flow.cli run --flow default --var tick_id=7 --wait
-    python -m rpa.flow.cli list
-    python -m rpa.flow.cli validate --flow default
-    python -m rpa.flow.cli export --flow default --out flows/bot.yaml
-    python -m rpa.flow.cli permission
+    python -m apps.engine.cli run --flow default --once
+    python -m apps.engine.cli run --flow default --var tick_id=7 --wait
+    python -m apps.engine.cli list
+    python -m apps.engine.cli validate --flow default
+    python -m apps.engine.cli export --flow default --out flows/bot.yaml
+    python -m apps.engine.cli permission
 
 Exit codes are meaningful so a shell scheduler or CI step can branch on them:
   0 success · 1 run failed · 2 bad usage / flow not found · 3 permission missing
@@ -28,10 +28,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from rpa.flow.registry import get_node_registry  # noqa: E402
-from rpa.flow.schema import validate_flow  # noqa: E402
-from rpa.flow.seed import SEED_FLOW_ID, seed  # noqa: E402
-from rpa.flow.store import get_store  # noqa: E402
+from apps.engine.registry import get_node_registry  # noqa: E402
+from apps.engine.schema import validate_flow  # noqa: E402
+from apps.engine.seed import SEED_FLOW_ID, seed  # noqa: E402
+from apps.engine.store import get_store  # noqa: E402
 
 EXIT_OK = 0
 EXIT_RUN_FAILED = 1
@@ -112,7 +112,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     if not args.skip_preflight:
-        from rpa.flow.permissions import preflight
+        from apps.engine.permissions import preflight
 
         check = preflight()
         if not check["ok"]:
@@ -122,7 +122,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             print("先在系统设置里授权，或用 --skip-preflight 强制运行。", file=sys.stderr)
             return EXIT_NO_PERMISSION
 
-    from rpa.flow.runner import get_run_manager
+    from apps.engine.runner import get_run_manager
 
     manager = get_run_manager()
     outcome = manager.submit(
@@ -214,7 +214,7 @@ def _cmd_import(args: argparse.Namespace) -> int:
 
 
 def _cmd_permission(args: argparse.Namespace) -> int:
-    from rpa.flow.permissions import check_all
+    from apps.engine.permissions import check_all
 
     result = check_all()
     if args.json:
@@ -257,7 +257,7 @@ def _cmd_trace(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m rpa.flow.cli", description="WeChat RPA 流程引擎命令行")
+    parser = argparse.ArgumentParser(prog="python -m apps.engine.cli", description="WeChat RPA 流程引擎命令行")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="运行一个流程")

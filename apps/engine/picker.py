@@ -57,7 +57,7 @@ def pick_from_rect(
 
     ``rect`` is in the *screenshot's* pixel space: ``x``, ``y``, ``width``,
     ``height``. The stored element is window-relative, which is what
-    :mod:`rpa.flow.elements` resolves against, so the caller passes the window
+    :mod:`apps.engine.elements` resolves against, so the caller passes the window
     origin separately when it knows it.
 
     Returns the stored element, with ``meta.strategy`` naming which of the three

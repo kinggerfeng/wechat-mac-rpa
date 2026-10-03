@@ -240,7 +240,7 @@ class TestExperimentResultsColumns:
         conn.close()
 
     def test_the_select_admin_performs_now_works(self, tmp_path):
-        """The exact per-tick comparison query from tools/server/admin.py."""
+        """The exact per-tick comparison query from apps/admin_console/admin.py."""
         db = tmp_path / "cases.db"
         CaseDB(db)
         conn = sqlite3.connect(db)

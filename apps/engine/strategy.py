@@ -236,7 +236,7 @@ def resolve(
     ``mode`` overrides the target's configured mode; when omitted, the target's
     ``AUTO`` mode applies, which is element-first with a vision fallback.
 
-    Raises :class:`~rpa.flow.schema.NodeError` when neither path can produce a
+    Raises :class:`~apps.engine.schema.NodeError` when neither path can produce a
     point — a silent miss would be a click at a default coordinate, which in a
     bot that sends messages is worse than a clean failure.
     """

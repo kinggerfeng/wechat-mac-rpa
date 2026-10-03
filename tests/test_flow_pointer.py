@@ -22,8 +22,8 @@ from rpa.action.system_automation import (
     NoOpSystemAutomation,
     SystemAutomation,
 )
-from rpa.flow.executor import FlowExecutor
-from rpa.flow.schema import Flow
+from apps.engine.executor import FlowExecutor
+from apps.engine.schema import Flow
 
 
 class RecordingAutomation(SystemAutomation):

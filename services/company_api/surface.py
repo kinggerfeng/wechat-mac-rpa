@@ -11,7 +11,7 @@ project can tell whether a change made things better. It is a development
 instrument, and shipping it to a customer tells them how the work is
 measured, which is both noise and an invitation to argue with the numbers.
 
-``rpa.backend.app`` used to mount every router unconditionally, so merely
+``services.company_api.app`` used to mount every router unconditionally, so merely
 importing the app pulled in four ``rpa.badcase`` modules. Splitting the
 surfaces is what makes "build the product" different from "build the tool that
 makes the product".

@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import pytest
 
-from rpa.flow.registry import get_node_registry
-from rpa.flow.store import _registry_specs
-from rpa.flow.version import (
+from apps.engine.registry import get_node_registry
+from apps.engine.store import _registry_specs
+from apps.engine.version import (
     ENGINE_VERSION,
     check,
     node_fingerprint,
@@ -30,7 +30,7 @@ def fingerprint() -> str:
 
 
 def test_a_saved_flow_carries_the_engine_that_accepted_it(tmp_path):
-    from rpa.flow.store import RpaStore
+    from apps.engine.store import RpaStore
 
     store = RpaStore(tmp_path / "rpa.db")
     flow = store.save_flow("t", "probe", {"version": 1, "entry": "", "nodes": [], "edges": []})
@@ -41,7 +41,7 @@ def test_a_saved_flow_carries_the_engine_that_accepted_it(tmp_path):
 
 def test_stamping_reaches_the_database_not_just_the_returned_dict(tmp_path, fingerprint):
     """The stamp has to survive a round trip, or it is decoration."""
-    from rpa.flow.store import RpaStore
+    from apps.engine.store import RpaStore
 
     store = RpaStore(tmp_path / "rpa.db")
     store.save_flow("t", "probe", {"version": 1, "entry": "", "nodes": [], "edges": []})
@@ -152,8 +152,8 @@ def test_the_list_endpoint_reports_compatibility(tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from rpa.backend import rpa_api
-    from rpa.flow.store import RpaStore
+    from services.company_api import rpa_api
+    from apps.engine.store import RpaStore
 
     db_path = tmp_path / "rpa.db"
     store = RpaStore(db_path)
@@ -183,8 +183,8 @@ def test_a_flow_from_before_versioning_is_reported_unstamped(tmp_path, monkeypat
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from rpa.backend import rpa_api
-    from rpa.flow.store import RpaStore
+    from services.company_api import rpa_api
+    from apps.engine.store import RpaStore
 
     db_path = tmp_path / "rpa.db"
     store = RpaStore(db_path)

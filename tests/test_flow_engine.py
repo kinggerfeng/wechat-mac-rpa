@@ -14,12 +14,12 @@ import time
 import pytest
 
 
-from rpa.flow.context import FlowScope, evaluate_condition  # noqa: E402
-from rpa.flow.executor import BRANCH_KEY, FlowExecutor  # noqa: E402
-from rpa.flow.registry import get_node_registry  # noqa: E402
-from rpa.flow.schema import Flow, FlowError, NodeError, validate_flow  # noqa: E402
-from rpa.flow.seed import build_default_graph  # noqa: E402
-from rpa.flow.store import RpaStore  # noqa: E402
+from apps.engine.context import FlowScope, evaluate_condition  # noqa: E402
+from apps.engine.executor import BRANCH_KEY, FlowExecutor  # noqa: E402
+from apps.engine.registry import get_node_registry  # noqa: E402
+from apps.engine.schema import Flow, FlowError, NodeError, validate_flow  # noqa: E402
+from apps.engine.seed import build_default_graph  # noqa: E402
+from apps.engine.store import RpaStore  # noqa: E402
 
 
 # ─────────────────────────────────────────────────────────────── helpers ──
@@ -245,8 +245,8 @@ def test_crash_inside_timeout_thread_is_not_reported_as_success():
     """Regression: a node raising on the timeout thread used to be traced as a
     success with empty output, so a flow whose perception was completely broken
     still reported ``ok``. The exception must cross the thread boundary."""
-    from rpa.flow import builtin_nodes
-    from rpa.flow.registry import NodeSpec
+    from apps.engine import builtin_nodes
+    from apps.engine.registry import NodeSpec
 
     registry = get_node_registry()
 
@@ -371,7 +371,7 @@ def test_store_marks_stale_runs_failed(tmp_path):
 # ────────────────────────────────────────── dual-path locate strategy ──
 
 def test_target_registry_matches_window_title():
-    from rpa.flow.strategy import LocateMode, TargetRegistry, Target
+    from apps.engine.strategy import LocateMode, TargetRegistry, Target
 
     registry = TargetRegistry()
     wechat = registry.for_title("WeChat")
@@ -388,8 +388,8 @@ def test_target_registry_matches_window_title():
 
 def test_locate_prefers_element_and_records_provenance(tmp_path, monkeypatch):
     """Path A must win under auto, and the trace must say so."""
-    from rpa.flow import elements, strategy
-    from rpa.flow.strategy import LocateMode, Located
+    from apps.engine import elements, strategy
+    from apps.engine.strategy import LocateMode, Located
 
     called = []
 
@@ -401,7 +401,7 @@ def test_locate_prefers_element_and_records_provenance(tmp_path, monkeypatch):
         raise AssertionError("vision must not be called when the element resolves")
 
     monkeypatch.setattr(elements, "locate_element", fake_locate_element)
-    monkeypatch.setattr("rpa.flow.vision.locate_by_vision", boom)
+    monkeypatch.setattr("apps.engine.vision.locate_by_vision", boom)
 
     result = strategy.resolve(None, description="搜索框", target="wechat", mode="auto", element="搜索框")
     assert called == ["搜索框"]
@@ -411,12 +411,12 @@ def test_locate_prefers_element_and_records_provenance(tmp_path, monkeypatch):
 
 
 def test_locate_falls_back_to_vision_and_records_provenance(monkeypatch):
-    from rpa.flow import elements, strategy
-    from rpa.flow.strategy import Located
+    from apps.engine import elements, strategy
+    from apps.engine.strategy import Located
 
     monkeypatch.setattr(elements, "locate_element", lambda ctx, name: None)
     monkeypatch.setattr(
-        "rpa.flow.vision.locate_by_vision",
+        "apps.engine.vision.locate_by_vision",
         lambda ctx, description, **kw: Located(x=7, y=9, source="vision", confidence=0.8, label=description),
     )
     result = strategy.resolve(None, description="那个蓝色的按钮", target="wechat", mode="auto")
@@ -425,12 +425,12 @@ def test_locate_falls_back_to_vision_and_records_provenance(monkeypatch):
 
 
 def test_element_strict_never_falls_back_to_a_model(monkeypatch):
-    from rpa.flow import elements, strategy
-    from rpa.flow.schema import NodeError
+    from apps.engine import elements, strategy
+    from apps.engine.schema import NodeError
 
     monkeypatch.setattr(elements, "locate_element", lambda ctx, name: None)
     monkeypatch.setattr(
-        "rpa.flow.vision.locate_by_vision",
+        "apps.engine.vision.locate_by_vision",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call the model")),
     )
     with pytest.raises(NodeError) as exc:
@@ -439,12 +439,12 @@ def test_element_strict_never_falls_back_to_a_model(monkeypatch):
 
 
 def test_vision_mode_ignores_the_element_library(monkeypatch):
-    from rpa.flow import elements, strategy
-    from rpa.flow.strategy import Located
+    from apps.engine import elements, strategy
+    from apps.engine.strategy import Located
 
     monkeypatch.setattr(elements, "locate_element", lambda ctx, name: Located(x=1, y=1, source="element"))
     monkeypatch.setattr(
-        "rpa.flow.vision.locate_by_vision",
+        "apps.engine.vision.locate_by_vision",
         lambda ctx, description, **kw: Located(x=500, y=600, source="vision"),
     )
     result = strategy.resolve(None, description="x", target="any_window", mode="vision", element="有元素也不用")
@@ -452,8 +452,8 @@ def test_vision_mode_ignores_the_element_library(monkeypatch):
 
 
 def test_unknown_target_is_an_error_not_a_silent_fallback():
-    from rpa.flow.schema import NodeError
-    from rpa.flow.strategy import resolve
+    from apps.engine.schema import NodeError
+    from apps.engine.strategy import resolve
 
     with pytest.raises(NodeError):
         resolve(None, description="x", target="不存在的应用")
@@ -463,7 +463,7 @@ def test_unknown_target_is_an_error_not_a_silent_fallback():
 
 def test_vision_action_scales_retina_coordinates():
     """A 2x screenshot must be halved before clicking, or the click lands 2x off."""
-    from rpa.flow.vision import VisionAction
+    from apps.engine.vision import VisionAction
 
     action = VisionAction.from_payload(
         {"action": "click", "x": 400, "y": 600, "confidence": 0.9}, scale=2.0
@@ -472,7 +472,7 @@ def test_vision_action_scales_retina_coordinates():
 
 
 def test_vision_action_defaults_to_scale_one_when_unknown():
-    from rpa.flow.vision import VisionAction
+    from apps.engine.vision import VisionAction
 
     for scale in (0, None, 1.0):
         action = VisionAction.from_payload({"action": "click", "x": 120, "y": 240}, scale=scale)
@@ -480,7 +480,7 @@ def test_vision_action_defaults_to_scale_one_when_unknown():
 
 
 def test_vision_action_handles_missing_and_junk_coordinates():
-    from rpa.flow.vision import VisionAction
+    from apps.engine.vision import VisionAction
 
     action = VisionAction.from_payload({"action": "click", "x": "左下角", "y": None}, scale=1.0)
     assert action.x is None and action.y is None
@@ -491,7 +491,7 @@ def test_vision_action_handles_missing_and_junk_coordinates():
 # ─────────────────────────────────────── design-time path declaration ──
 
 def test_node_path_roundtrips():
-    from rpa.flow.schema import Node
+    from apps.engine.schema import Node
 
     node = Node.from_dict({"id": "a", "type": "locate", "path": "vision", "target": "wechat"})
     assert node.path == "vision" and node.target == "wechat"
@@ -500,7 +500,7 @@ def test_node_path_roundtrips():
 
 
 def test_invalid_path_is_rejected_at_parse_time():
-    from rpa.flow.schema import FlowError, Node
+    from apps.engine.schema import FlowError, Node
 
     with pytest.raises(FlowError) as exc:
         Node.from_dict({"id": "a", "type": "locate", "path": "魔法"})
@@ -553,8 +553,8 @@ def test_registry_marks_which_types_can_declare_a_path():
 
 def test_node_path_field_beats_a_legacy_mode_param(monkeypatch):
     """The field is the declaration the canvas shows, so it must win."""
-    from rpa.flow import builtin_nodes
-    from rpa.flow.registry import NodeSpec
+    from apps.engine import builtin_nodes
+    from apps.engine.registry import NodeSpec
 
     seen: dict[str, object] = {}
 
@@ -576,8 +576,8 @@ def test_node_path_field_beats_a_legacy_mode_param(monkeypatch):
 
 
 def test_flow_default_path_reaches_the_node_when_it_declares_none(monkeypatch):
-    from rpa.flow import builtin_nodes
-    from rpa.flow.registry import NodeSpec
+    from apps.engine import builtin_nodes
+    from apps.engine.registry import NodeSpec
 
     seen: dict[str, object] = {}
 

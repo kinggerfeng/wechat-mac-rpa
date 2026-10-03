@@ -82,7 +82,7 @@ def _build_automation(dry_run: bool) -> Any:
 
 
 def _build_profile() -> Any:
-    from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+    from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 
     return PROFILE_WECHAT_MAC_1760X1280
 

@@ -9,7 +9,7 @@ that thing, is this true, describe what you see.
 Nothing here replaces the element library. This is the path for screens with
 nothing to capture: a remote desktop, a game, a canvas-rendered UI, a vendor app
 that draws its own widgets. It costs a model call per action and is
-non-deterministic, which is exactly why :mod:`rpa.flow.strategy` tries the
+non-deterministic, which is exactly why :mod:`apps.engine.strategy` tries the
 element library first and only falls through to here.
 
 Coordinate handling is the subtle part and the reason this is a module rather

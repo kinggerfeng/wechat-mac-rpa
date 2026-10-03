@@ -7,7 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from rpa.capture.window_capture import WeChatNotReadyError
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.perception.vision_pipeline import VisionPipeline
 
 

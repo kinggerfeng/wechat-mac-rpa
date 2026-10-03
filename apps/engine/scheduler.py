@@ -189,7 +189,7 @@ class Scheduler:
     an in-memory dict, which is invisible to every other process on the same
     database. Three dev servers sharing ``rpa.db`` fired one ``*/15`` schedule
     three times an interval. There are now two independent guards — a
-    :class:`~rpa.flow.lease.Lease` so at most one process runs a loop at all, and
+    :class:`~apps.engine.lease.Lease` so at most one process runs a loop at all, and
     a compare-and-set on the schedule row for a process that starts after the
     holder already claimed the minute. See ``src/flow/lease.py`` for why both are
     needed.

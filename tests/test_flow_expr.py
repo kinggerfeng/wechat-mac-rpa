@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import pytest
 
-from rpa.flow.context import FlowScope, evaluate_condition
-from rpa.flow.expr import evaluate, interpolate
-from rpa.flow.schema import FlowError
+from apps.engine.context import FlowScope, evaluate_condition
+from apps.engine.expr import evaluate, interpolate
+from apps.engine.schema import FlowError
 
 
 @pytest.fixture()
@@ -224,8 +224,8 @@ def test_interpolation_leaves_plain_text_untouched(scope):
 
 def test_set_var_evaluates_expressions_without_eval():
     """The variable node shared the same sandbox; it now shares the evaluator."""
-    from rpa.flow.executor import FlowExecutor
-    from rpa.flow.schema import Flow
+    from apps.engine.executor import FlowExecutor
+    from apps.engine.schema import Flow
 
     def _node(node_id, node_type, **params):
         return {
@@ -271,8 +271,8 @@ def test_set_var_evaluates_expressions_without_eval():
 
 
 def test_condition_node_evaluates_a_compound_expression():
-    from rpa.flow.executor import FlowExecutor
-    from rpa.flow.schema import Flow
+    from apps.engine.executor import FlowExecutor
+    from apps.engine.schema import Flow
 
     def _node(node_id, node_type, **params):
         return {

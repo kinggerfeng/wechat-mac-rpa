@@ -89,7 +89,7 @@ impl BackendProcess {
             .args([
                 "-m",
                 "uvicorn",
-                "rpa.backend.app:app",
+                "services.company_api.app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",

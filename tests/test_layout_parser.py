@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from rpa.layout.layout_parser import TIMESTAMP_PATTERNS, LayoutParser
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.layout_parser import TIMESTAMP_PATTERNS, LayoutParser
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.models.base import Rect
 from rpa.ocr.vision_ocr import VisionOCREngine
 

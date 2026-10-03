@@ -134,7 +134,7 @@ python3 scripts/view_ocr_history.py raw 100
 | `rpa/perception/vision_pipeline.py` | L3.5 纯本地 OCR 管道（备用回退） |
 | `rpa/capture/window_capture.py` | 窗口捕获（含登录恢复） |
 | `rpa/ocr/vision_ocr.py` | Vision OCR 引擎 |
-| `rpa/layout/layout_parser.py` | UI 布局分组 |
+| `apps/engine/layout/layout_parser.py` | UI 布局分组 |
 | `rpa/message/extractor.py` | 消息提取 |
 | `rpa/session/chat_session.py` | 会话与去重 |
 | `rpa/action/login_recovery.py` | 登录恢复处理 |

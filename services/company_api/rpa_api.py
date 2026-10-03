@@ -18,25 +18,25 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-# rpa.flow lives at the repository root, not next to this module.
+# apps.engine lives at the repository root, not next to this module.
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from rpa.flow.registry import get_node_registry
-from rpa.flow.scheduler import CronError, CronSchedule, get_scheduler
-from rpa.flow.schema import PATH_CHOICES, Flow, FlowError, new_id, validate_flow
-from rpa.flow.store import _registry_specs, get_store
-from rpa.flow.version import ENGINE_VERSION
-from rpa.flow.version import check as check_engine_compat
-from rpa.flow.version import node_fingerprint
-from rpa.flow.strategy import get_target_registry
+from apps.engine.registry import get_node_registry
+from apps.engine.scheduler import CronError, CronSchedule, get_scheduler
+from apps.engine.schema import PATH_CHOICES, Flow, FlowError, new_id, validate_flow
+from apps.engine.store import _registry_specs, get_store
+from apps.engine.version import ENGINE_VERSION
+from apps.engine.version import check as check_engine_compat
+from apps.engine.version import node_fingerprint
+from apps.engine.strategy import get_target_registry
 
 router = APIRouter(prefix="/api", tags=["flow"])
 
 
 def _manager():
-    from rpa.flow.runner import get_run_manager
+    from apps.engine.runner import get_run_manager
 
     return get_run_manager()
 
@@ -77,7 +77,7 @@ def list_targets() -> dict[str, Any]:
 @router.post("/flow/targets")
 def upsert_target(payload: dict[str, Any]) -> dict[str, Any]:
     """Register an application so flows can target it by name."""
-    from rpa.flow.strategy import LocateMode, Target
+    from apps.engine.strategy import LocateMode, Target
 
     name = str(payload.get("name") or "").strip()
     if not name:
@@ -343,14 +343,14 @@ def _sse(event: dict[str, Any]) -> str:
 
 @router.get("/elements")
 def list_elements(flow_id: str | None = None) -> dict[str, Any]:
-    from rpa.flow.elements import describe_element
+    from apps.engine.elements import describe_element
 
     return {"elements": [describe_element(e) for e in get_store().list_elements(flow_id)]}
 
 
 @router.post("/elements")
 def save_element(payload: dict[str, Any]) -> dict[str, Any]:
-    from rpa.flow.elements import capture_element
+    from apps.engine.elements import capture_element
 
     name = str(payload.get("name") or "").strip()
     if not name:
@@ -371,7 +371,7 @@ def save_element(payload: dict[str, Any]) -> dict[str, Any]:
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    from rpa.flow.elements import describe_element
+    from apps.engine.elements import describe_element
 
     return describe_element(element)
 
@@ -390,9 +390,9 @@ def resolve_element(name: str, payload: dict[str, Any] | None = None) -> dict[st
     This is how an operator checks an element after moving or resizing the
     window: no click happens, it just reports the point and which anchor won.
     """
-    from rpa.flow.elements import locate_element
-    from rpa.flow.context import FlowContext, FlowScope
-    from rpa.flow.services import register_default_services
+    from apps.engine.elements import locate_element
+    from apps.engine.context import FlowContext, FlowScope
+    from apps.engine.services import register_default_services
 
     payload = payload or {}
     ctx = FlowContext(scope=FlowScope(payload.get("variables") or {}), run_id="probe", flow_id="probe")
@@ -410,14 +410,14 @@ def resolve_element(name: str, payload: dict[str, Any] | None = None) -> dict[st
 
 @router.get("/permissions")
 def get_permissions(deep: bool = Query(False, description="true 会触发系统授权弹窗，仅权限页使用")) -> dict[str, Any]:
-    from rpa.flow.permissions import check_all
+    from apps.engine.permissions import check_all
 
     return check_all(deep=deep)
 
 
 @router.post("/permissions/{key}/prompt")
 def prompt_permission(key: str) -> dict[str, Any]:
-    from rpa.flow.permissions import request_prompt
+    from apps.engine.permissions import request_prompt
 
     result = request_prompt(key)
     if result.get("error"):
@@ -427,7 +427,7 @@ def prompt_permission(key: str) -> dict[str, Any]:
 
 @router.post("/permissions/{key}/open")
 def open_permission_pane(key: str) -> dict[str, Any]:
-    from rpa.flow.permissions import open_pane
+    from apps.engine.permissions import open_pane
 
     result = open_pane(key)
     if not result.get("opened"):
@@ -438,7 +438,7 @@ def open_permission_pane(key: str) -> dict[str, Any]:
 @router.post("/permissions/vision/reset")
 def reset_vision_client() -> dict[str, Any]:
     """Drop the cached VLM client so a key change takes effect without a restart."""
-    from rpa.flow.vision import reset_vision_client
+    from apps.engine.vision import reset_vision_client
 
     reset_vision_client()
     return {"reset": True}

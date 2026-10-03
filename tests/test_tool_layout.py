@@ -21,7 +21,15 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOOLS_ROOT = REPO_ROOT / "tools"
-CATEGORIES = ("bench", "data", "persona", "wiki", "ops", "server")
+#: ``server`` left ``tools/`` when the operator console moved to
+#: ``apps/admin-console/`` — it is an application, not a throwaway script, and
+#: leaving it under ``tools/`` is what made it look like one.
+CATEGORIES = ("bench", "data", "persona", "wiki", "ops")
+
+#: Directories that used to be script categories and are now applications. Kept
+#: here so a later move cannot quietly delete one: the test below asserts the
+#: directory exists rather than trusting this list.
+PROMOTED = {"server": REPO_ROOT / "apps" / "admin_console"}
 
 #: ``tools/bench/legacy/`` came from ``scripts/experiments/legacy/`` and was
 #: already three levels deep, so it kept its original level count and is
@@ -91,11 +99,21 @@ def test_a_tool_never_escapes_the_repository(path: Path):
 
 
 def test_every_category_directory_exists():
-    """The six categories are the whole point of the reorganisation."""
+    """The remaining categories, plus whatever was promoted out of ``tools/``."""
     for category in CATEGORIES:
         directory = TOOLS_ROOT / category
         assert directory.is_dir(), f"tools/{category} is missing"
         assert any(directory.iterdir()), f"tools/{category} is empty"
+
+    for category, promoted_to in PROMOTED.items():
+        assert not (TOOLS_ROOT / category).exists(), (
+            f"tools/{category} is back — it is an application now, at {promoted_to}"
+        )
+        assert promoted_to.is_dir(), (
+            f"tools/{category} was promoted to {promoted_to.relative_to(REPO_ROOT)}, "
+            f"which does not exist"
+        )
+        assert any(promoted_to.iterdir()), f"{promoted_to} is empty"
 
 
 def test_the_legacy_subtree_moved_sideways_not_down():

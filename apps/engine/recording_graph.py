@@ -14,7 +14,7 @@ away. A recording that silently drops its own pauses would replay faster than
 the human and hit the wrong screen.
 
 Coordinates become action nodes, not element references: naming an element is
-:mod:`rpa.flow.elements`' job and needs a deliberate choice by the author.
+:mod:`apps.engine.elements`' job and needs a deliberate choice by the author.
 """
 
 from __future__ import annotations
@@ -95,7 +95,7 @@ def actions_to_graph(
 ) -> dict[str, Any]:
     """Build a flow graph from a recording.
 
-    Returns a graph dict ready for :func:`rpa.flow.schema.validate_flow`. An
+    Returns a graph dict ready for :func:`apps.engine.schema.validate_flow`. An
     empty recording still yields a valid one-node graph with a start and an end,
     because an empty canvas with a dangling entry node is not something the
     editor can open.

@@ -17,7 +17,7 @@ mkdir -p logs
 
 while true; do
     echo "[admin_wrapper] starting admin.py at $(date -Iseconds)"
-    "$PYTHON_BIN" tools/server/admin.py
+    "$PYTHON_BIN" apps/admin_console/admin.py
     EXIT_CODE=$?
     echo "[admin_wrapper] admin.py exited with code $EXIT_CODE at $(date -Iseconds), restarting in 3s..."
     sleep 3

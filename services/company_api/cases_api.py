@@ -1,6 +1,6 @@
 """Cases-domain routes for the desktop API.
 
-Split out of :mod:`rpa.backend.app` for one reason: this is the only module
+Split out of :mod:`services.company_api.app` for one reason: this is the only module
 here that opens ``data/cases.db``, and that file is *optional*. A desktop
 install that has never run the bot has no cases.db at all, so every route below
 has to survive its absence. The legacy admin server never had to think about
@@ -13,7 +13,7 @@ that says "no data yet" is honest; a panel rendering
 install, which is this project's number one bug shape: a failure dressed up as
 data.
 
-Ported from ``tools/server/admin.py``, which is being retired along with its
+Ported from ``apps/admin_console/admin.py``, which is being retired along with its
 server-rendered HTML. The SQL is kept verbatim where it was correct; the
 divergences are all commented at the point they happen.
 """

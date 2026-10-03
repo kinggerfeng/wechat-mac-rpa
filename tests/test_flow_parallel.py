@@ -14,9 +14,9 @@ import threading
 import pytest
 
 
-from rpa.flow.executor import FlowExecutor
-from rpa.flow.registry import get_node_registry
-from rpa.flow.schema import Flow, validate_flow
+from apps.engine.executor import FlowExecutor
+from apps.engine.registry import get_node_registry
+from apps.engine.schema import Flow, validate_flow
 
 REG = get_node_registry()
 
@@ -185,8 +185,8 @@ class TestFanOutFanIn:
                     seen.append(self.node_id)
                 return {"value": self.node_id}
 
-        from rpa.flow import builtin_nodes, control_nodes, system_nodes
-        from rpa.flow.registry import NodeRegistry, NodeSpec
+        from apps.engine import builtin_nodes, control_nodes, system_nodes
+        from apps.engine.registry import NodeRegistry, NodeSpec
 
         registry = NodeRegistry()
         builtin_nodes.register_all(registry)
@@ -401,7 +401,7 @@ class TestValidation:
         assert not [c for sev, c in _codes(graph) if sev == "error"]
 
     def test_the_two_seed_flows_still_validate(self):
-        from rpa.flow.store import get_store
+        from apps.engine.store import get_store
 
         for row in get_store().list_flows():
             codes = _codes(row.get("graph") or {})

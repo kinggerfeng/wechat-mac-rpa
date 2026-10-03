@@ -10,8 +10,8 @@
 所以此文件主要暴露问题 1。
 """
 
-from rpa.layout.layout_parser import LayoutParser, UILayout
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.layout_parser import LayoutParser, UILayout
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.message.extractor import MessageExtractor
 from rpa.models.base import OCRTextElement, Point, Rect
 from rpa.reply.generator import ReplyGenerator

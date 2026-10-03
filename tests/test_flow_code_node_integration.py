@@ -1,6 +1,6 @@
 """The ``code`` node as the executor sees it.
 
-:mod:`rpa.flow.code_node` tests the sandbox in isolation. These tests cover the
+:mod:`apps.engine.code_node` tests the sandbox in isolation. These tests cover the
 seam the executor adds: scope exposure, how a failure is reported, and the fact
 that a refused snippet never leaves partial side effects behind.
 
@@ -19,9 +19,9 @@ from pathlib import Path
 import pytest
 
 
-from rpa.flow.executor import FlowExecutor  # noqa: E402
-from rpa.flow.registry import get_node_registry  # noqa: E402
-from rpa.flow.schema import Flow, NodeError, validate_flow  # noqa: E402
+from apps.engine.executor import FlowExecutor  # noqa: E402
+from apps.engine.registry import get_node_registry  # noqa: E402
+from apps.engine.schema import Flow, NodeError, validate_flow  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -408,7 +408,7 @@ def test_a_snippet_referencing_an_unknown_name_fails_loudly():
 
 
 def test_the_node_raises_node_error_for_a_refusal():
-    from rpa.flow.builtin_nodes import CodeNode
+    from apps.engine.builtin_nodes import CodeNode
 
     instance = CodeNode({"code": "import os"})
     instance.spec = get_node_registry().get("code")

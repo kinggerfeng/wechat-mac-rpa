@@ -6,5 +6,5 @@ queries:
 
 paths-ignore:
   - archive
-  - tools/server/admin.py
+  - apps/admin_console/admin.py
   - rpa/badcase/review_server.py

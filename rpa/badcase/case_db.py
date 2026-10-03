@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS experiment_results (
     judge_dimensions_json TEXT,
     judge_reason TEXT,
     -- Present because tools/bench/run_experiment.py writes them and
-    -- tools/server/admin.py reads them for the side-by-side prompt diff. The
+    -- apps/admin_console/admin.py reads them for the side-by-side prompt diff. The
     -- columns were read and written for months before anyone ran either
     -- statement: `no such column: system_prompt` on the INSERT, the same on
     -- the SELECT, and a DDL that had never had them.

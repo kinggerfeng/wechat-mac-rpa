@@ -8,7 +8,7 @@ import pytest
 from rpa.action.login_recovery import LoginRecoveryResult, LoginRecoveryStatus
 from rpa.bot.wechat_bot import WeChatBot
 from rpa.capture.window_capture import WeChatNotReadyError
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.models.base import ActionResult, ChatMessage, PerceptionResult, SenderType
 
 

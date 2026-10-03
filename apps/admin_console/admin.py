@@ -14,7 +14,7 @@ import json as _json
 import subprocess  # nosec B404
 from typing import Any, Dict, List, Optional
 
-_logger = logging.getLogger("tools.server.admin")
+_logger = logging.getLogger("apps.admin_console.admin")
 
 
 from fastapi import FastAPI, Query, Request

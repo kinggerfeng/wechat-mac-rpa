@@ -13,7 +13,7 @@
 | `rpa/models/` | 直接搬 | 领域模型，无依赖 |
 | `rpa/capture/` | 直接搬 | 截图模块，无变化 |
 | `rpa/ocr/` | 直接搬 | OCR，修 normalized_x/y 硬编码分辨率 |
-| `rpa/layout/` | 直接搬 | 布局解析 |
+| `apps/engine/layout/` | 直接搬 | 布局解析 |
 | `rpa/message/` | 直接搬 | 消息提取，修 used_self 去重 |
 | `rpa/perception/` | 直接搬 | SmartPipeline + VisionPipeline，修 is_group 缺失 |
 | `rpa/session/` | 直接搬 | GlobalStore 去重+持久化 |

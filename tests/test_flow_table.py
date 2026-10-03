@@ -16,7 +16,7 @@ import json
 import pytest
 
 
-from rpa.flow.table import (
+from apps.engine.table import (
     Table,
     TableError,
     coerce,

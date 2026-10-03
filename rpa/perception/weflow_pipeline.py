@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Optional
 
 from rpa.capture.window_capture import WeChatNotReadyError, WindowCapture
-from rpa.layout.layout_parser import LayoutParser
-from rpa.layout.profile import LayoutProfile
+from apps.engine.layout.layout_parser import LayoutParser
+from apps.engine.layout.profile import LayoutProfile
 from rpa.models.base import ChatMessage, PerceptionResult, SenderType
 from rpa.ocr.vision_ocr import VisionOCREngine
 from rpa.utils.chat_utils import _is_group_chat_name

@@ -24,10 +24,10 @@ import os
 import pytest
 
 
-from rpa.flow import files
-from rpa.flow.context import FlowContext, FlowScope
-from rpa.flow.registry import get_node_registry
-from rpa.flow.schema import NodeError
+from apps.engine import files
+from apps.engine.context import FlowContext, FlowScope
+from apps.engine.registry import get_node_registry
+from apps.engine.schema import NodeError
 
 REG = get_node_registry()
 
@@ -35,7 +35,7 @@ REG = get_node_registry()
 @pytest.fixture()
 def sandbox(tmp_path, monkeypatch):
     """A fake project root, so nothing here can touch the real repository."""
-    import rpa.flow.builtin_nodes as builtin
+    import apps.engine.builtin_nodes as builtin
 
     root = tmp_path / "project"
     (root / "data").mkdir(parents=True)

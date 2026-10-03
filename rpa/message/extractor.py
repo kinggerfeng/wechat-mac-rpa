@@ -4,8 +4,8 @@
 import re
 from typing import Any, Dict, List
 
-from rpa.layout.layout_parser import TIMESTAMP_PATTERNS, UILayout
-from rpa.layout.profile import LayoutProfile
+from apps.engine.layout.layout_parser import TIMESTAMP_PATTERNS, UILayout
+from apps.engine.layout.profile import LayoutProfile
 from rpa.models.base import ChatMessage, OCRTextElement, Point, Rect, SenderType
 
 # 微信账号安全通知的固定模板片段；必须全部按顺序出现

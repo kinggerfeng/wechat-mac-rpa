@@ -8,8 +8,8 @@
 
 from pathlib import Path
 from rpa.ocr.vision_ocr import VisionOCREngine
-from rpa.layout.layout_parser import LayoutParser
-from rpa.layout.profile import PROFILE_WECHAT_MAC_1760X1280
+from apps.engine.layout.layout_parser import LayoutParser
+from apps.engine.layout.profile import PROFILE_WECHAT_MAC_1760X1280
 from rpa.message.extractor import MessageExtractor
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "real_login_recovered_scene.png"

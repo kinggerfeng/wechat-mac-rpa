@@ -868,7 +868,7 @@ _TILDE_MARKER_RE = re.compile(r"(?<=[\s\)])\s*~\s*")
 def is_valid_expression(text: str) -> bool:
     """Whether ``text`` parses as an expression the evaluator can run.
 
-    Deliberately depends on :mod:`ast` rather than :mod:`rpa.flow.expr`: the
+    Deliberately depends on :mod:`ast` rather than :mod:`apps.engine.expr`: the
     evaluator imports ``FlowError`` from this module, so importing it back here
     would close a cycle. Parsing is the whole check — the evaluator rejects
     anything unsupported at run time with a message naming the construct.

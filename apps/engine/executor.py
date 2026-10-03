@@ -134,7 +134,7 @@ class FlowExecutor:
 
     The instance holds the live node objects (they own heavy resources like screen
     handles), so it is not reusable across concurrent runs of the same process.
-    :class:`~rpa.flow.runner.FlowRunner` gives each run its own executor.
+    :class:`~apps.engine.runner.FlowRunner` gives each run its own executor.
     """
 
     def __init__(

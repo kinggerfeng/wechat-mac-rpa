@@ -34,7 +34,7 @@
 | 运行日志 | `bot_logger` | `data/logs/` |
 | Tick 调试 JSON | `debug_logger` | `data/debug/` |
 | 截图 | `window_capture` | `data/screenshots/` |
-| 后台运行时输出 | `tools/server/admin.py`（待退役） | `*.out`（已被 gitignore） |
+| 后台运行时输出 | `apps/admin_console/admin.py`（待退役） | `*.out`（已被 gitignore） |
 
 ### 清理检查清单
 
@@ -216,8 +216,8 @@
 
 **任何修改前端相关代码（Vue 页面、桌面 API、前端路由、路径配置）后，必须全量验证所有页面，禁止只看代码就声称完成。**
 
-> **本节原描述的是 `tools/server/admin.py` 的 8 个服务端渲染页面。**
-> 桌面端已改为 Tauri + Vue 3（`apps/desktop/`），cases 域路由迁至 `rpa/backend/cases_api.py`，
+> **本节原描述的是 `apps/admin_console/admin.py` 的 8 个服务端渲染页面。**
+> 桌面端已改为 Tauri + Vue 3（`apps/desktop/`），cases 域路由迁至 `services/company_api/cases_api.py`，
 > `admin.py` 进入待退役状态。下面保留其页面清单作为**路由对照**，因为
 > `/api/cases/*` 的每个端点仍对应一个 Vue 页面，改后端时需要确认对应页面。
 

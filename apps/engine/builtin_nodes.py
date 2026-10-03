@@ -5,7 +5,7 @@ here: **no business logic**. If a node needs a decision, that decision belongs i
 an existing module and the node just calls it and shapes the return value. A flow
 graph that re-implements reply policy in YAML has lost the tests that module has.
 
-Nodes raise :class:`~rpa.flow.schema.NodeError` for expected runtime conditions
+Nodes raise :class:`~apps.engine.schema.NodeError` for expected runtime conditions
 (WeChat not open, capture rejected, LLM refused) so ``on_error: branch`` can route
 them, and let genuinely unexpected exceptions propagate.
 """
@@ -84,7 +84,7 @@ class SetVarNode(BaseNode):
     tick counter without writing ``tick_id + 1`` in an expression and hoping the
     variable exists.
 
-    ``expression`` is evaluated by :mod:`rpa.flow.expr`, which walks a parsed
+    ``expression`` is evaluated by :mod:`apps.engine.expr`, which walks a parsed
     ``ast`` through an allow-list. It used to be handed to :func:`eval` with a
     reduced ``__builtins__``, on the belief that a closed namespace is a
     sandbox. It is not: ``().__class__.__bases__[0].__subclasses__()`` still
@@ -139,7 +139,7 @@ class LogNode(BaseNode):
 class ConditionNode(BaseNode):
     """Branch on a boolean expression.
 
-    ``expression`` is a full expression evaluated by :mod:`rpa.flow.expr` against
+    ``expression`` is a full expression evaluated by :mod:`apps.engine.expr` against
     the run scope — comparisons, ``and``/``or``/``not``, parentheses, literals and
     a whitelisted function set. Ports: ``true`` / ``false``.
     """
@@ -1395,7 +1395,7 @@ class _TableNode(BaseNode):
     """Shared parsing for the table nodes: JSON/CSV in, a :class:`Table` out.
 
     Parsing is the only thing these share. The operations live in
-    :mod:`rpa.flow.table` so the same code backs the nodes, the tests and
+    :mod:`apps.engine.table` so the same code backs the nodes, the tests and
     anything else that needs a table.
     """
 
@@ -1617,7 +1617,7 @@ class TableInfoNode(_TableNode):
 class _FsNode(BaseNode):
     """Shared plumbing for the filesystem nodes: resolve, refuse, shape.
 
-    Resolution and the containment check live in :mod:`rpa.flow.files` so they
+    Resolution and the containment check live in :mod:`apps.engine.files` so they
     cannot drift between the six nodes that need them. What stays here is
     parameter shaping and the choice of which operation to run — no path logic.
     """
@@ -1930,7 +1930,7 @@ class LLMNode(BaseNode):
         exists to remove.
         """
         try:
-            from rpa.flow.store import get_store
+            from apps.engine.store import get_store
 
             store = get_store()
         except Exception:  # noqa: BLE001
@@ -2016,7 +2016,7 @@ class CodeNode(BaseNode):
     """Run a short Python snippet against the run scope.
 
     All the policy — the AST allow-list, the deadline, the filesystem
-    containment — lives in :mod:`rpa.flow.code_node` so it can be tested without
+    containment — lives in :mod:`apps.engine.code_node` so it can be tested without
     an executor and cannot drift between callers. What stays here is parameter
     shaping and deciding what the snippet gets to see.
 

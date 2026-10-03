@@ -11,9 +11,9 @@ from __future__ import annotations
 import pytest
 
 
-from rpa.flow.context import FlowScope
-from rpa.flow.expr import interpolate
-from rpa.flow.schema import Flow, validate_flow
+from apps.engine.context import FlowScope
+from apps.engine.expr import interpolate
+from apps.engine.schema import Flow, validate_flow
 
 
 def _graph(nodes: list[dict], edges: list[dict] | None = None) -> dict:
@@ -243,7 +243,7 @@ class TestLLMNode:
     @staticmethod
     def _run(params: dict, reply: str = "hello", variables: dict | None = None):
         import rpa.llm.openclaw_client as oc
-        from rpa.flow.executor import FlowExecutor
+        from apps.engine.executor import FlowExecutor
 
         seen: dict = {}
 
@@ -313,7 +313,7 @@ class TestTemplateNode:
 
     @staticmethod
     def _run(template: str, variables: dict | None = None):
-        from rpa.flow.executor import FlowExecutor
+        from apps.engine.executor import FlowExecutor
 
         flow = Flow(
             id="flow_tpl", name="tpl",

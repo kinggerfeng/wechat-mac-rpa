@@ -60,11 +60,11 @@ python -m pytest rpa/tests -v
 |--------------|---------|
 | 截图逻辑 | `rpa/capture/window_capture.py` ✅ |
 | OCR 识别 | `rpa/ocr/vision_ocr.py` ✅ |
-| 布局解析 | `rpa/layout/layout_parser.py` ✅ |
+| 布局解析 | `apps/engine/layout/layout_parser.py` ✅ |
 | 消息提取 | `rpa/message/extractor.py` ✅ |
 | 感知管道（智能预判/API兜底切换） | `rpa/perception/smart_pipeline.py` ✅ |
 | 纯本地 OCR 管道 | `rpa/perception/vision_pipeline.py` ✅ |
-| 布局配置（边界值、阈值） | `rpa/layout/profile.py` ✅ |
+| 布局配置（边界值、阈值） | `apps/engine/layout/profile.py` ✅ |
 | 会话/去重 | `rpa/session/chat_session.py` ✅ |
 | 回复策略 | `rpa/reply/policy.py` ✅ |
 | 回复生成 | `rpa/reply/generator.py` ✅ |

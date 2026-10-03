@@ -121,27 +121,28 @@ onUnmounted(() => {
 .shell { display: flex; height: 100vh; background: var(--canvas); color: var(--ink); }
 
 .rail {
-  width: 76px; flex: 0 0 76px; background: var(--green-deep);
+  width: 76px; flex: 0 0 76px; background: var(--rail);
+  color: #e6eee8;
   display: flex; flex-direction: column; align-items: center; padding: 16px 0;
 }
 .brand-mark {
   width: 44px; height: 44px; display: grid; place-items: center;
-  border: 1px solid var(--green-line); color: var(--paper);
-  font-family: var(--font-display); font-size: 22px;
+  border: 1px solid #729282; color: #fff;
+  font-family: var(--font-serif); font-size: 22px; font-style: italic;
 }
-.rail-rule { width: 28px; border-top: 1px solid var(--green-line); margin: 14px 0 18px; }
+.rail-rule { width: 28px; height: 1px; background: #46665a; margin: 14px 0 18px; }
 .rail-nav { display: flex; flex-direction: column; gap: 8px; }
 .rail-button {
   width: 42px; height: 42px; display: grid; place-items: center;
-  color: var(--green-muted); border-radius: 6px;
+  color: #99b0a3; border-radius: var(--radius);
 }
-.rail-button:hover { background: rgba(255, 255, 255, 0.08); color: var(--paper); }
-.rail-button.selected { background: var(--green-mid); color: var(--paper); }
+.rail-button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.rail-button.selected { background: var(--rail-active); color: #fff; }
 .rail-bottom {
-  margin-top: auto; color: var(--green-muted); font-size: 10px;
+  margin-top: auto; color: #87a194; font-size: 10px;
   letter-spacing: 0.14em; text-align: center; line-height: 1.5;
 }
-.rail-bottom b { color: var(--paper); }
+.rail-bottom b { color: #e2eee6; }
 
 .workspace { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar {
@@ -149,11 +150,11 @@ onUnmounted(() => {
   justify-content: space-between; padding: 0 24px;
   border-bottom: 1px solid var(--line); background: var(--paper);
 }
-.breadcrumbs { font-size: 14px; color: var(--ink-muted); letter-spacing: 0.04em; }
+.breadcrumbs { font-size: 14px; color: var(--muted); letter-spacing: 0.04em; }
 .breadcrumbs i { margin: 0 10px; font-style: normal; opacity: 0.5; }
 .breadcrumbs b { color: var(--ink); font-weight: 600; }
 .top-meta { display: flex; align-items: center; gap: 16px; }
-.conn { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--green-deep); }
+.conn { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--green-dark); }
 .conn.off { color: var(--orange); }
 .conn .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 .conn.off .dot { background: var(--orange); }

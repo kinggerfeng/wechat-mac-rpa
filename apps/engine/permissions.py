@@ -236,7 +236,7 @@ def check_all(include_wechat: bool = True, deep: bool = False) -> dict[str, Any]
         "missing": missing,
         "wechat_running": wechat,
         "permissions": permissions,
-        "summary": _summary(permissions),
+        "summary": _summary(permissions, missing),
     }
 
 
@@ -248,11 +248,30 @@ def _fix_text(key: str, status: str) -> str:
     return f"系统设置 → 隐私与安全性 → {TITLES[key]}，勾选本应用后重启本应用"
 
 
-def _summary(permissions: list[dict[str, Any]]) -> str:
-    if not any(not p["granted"] for p in permissions):
-        return "全部权限已授予，可以运行自动化流程"
-    missing = "、".join(TITLES[p["key"]] for p in permissions if not p["granted"])
-    return f"缺少权限：{missing}"
+def _summary(permissions: list[dict[str, Any]], missing: list[str]) -> str:
+    """One rule, one place.
+
+    ``missing`` is the caller's already-computed answer to "what actually
+    blocks a run right now", and it drops ``not_determined`` on a shallow
+    check. Recomputing the same question here with a second rule put two
+    contradicting sentences in one response body: the header counted one
+    missing permission while the summary under it named two, and the page
+    rendered the authoritative list right beside them.
+
+    The three cases are not the same thing and must not be collapsed:
+
+    - something was actually denied or is unavailable -> name it
+    - nothing denied, but the system has not asked yet -> say so, because
+      "all permissions granted" would be a lie about a state nobody measured
+    - everything granted
+    """
+    if missing:
+        return f"缺少权限：{'、'.join(TITLES[key] for key in missing)}"
+    undetermined = [p for p in permissions if p["status"] == "not_determined"]
+    if undetermined:
+        names = "、".join(TITLES[p["key"]] for p in undetermined)
+        return f"无权限被拒绝，但 {names} 尚未询问，需在设置页主动检测"
+    return "全部权限已授予，可以运行自动化流程"
 
 
 def request_prompt(key: str) -> dict[str, Any]:

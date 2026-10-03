@@ -144,12 +144,17 @@ def test_no_source_file_is_silently_untracked():
     """
     import subprocess
 
-    shipped = ["rpa", "tools", "tests", "apps/desktop/src", "apps/desktop/src-tauri/src"]
+    shipped = ["rpa", "tools", "tests", "apps"]
+    # Build and dependency trees are walked over, not scanned: `apps/` contains
+    # two `node_modules` and a Rust `target/`, and each file here costs two
+    # subprocess calls. They are ignored by construction, so skipping them
+    # cannot hide a hole.
+    skip_dirs = {"node_modules", "target", "__pycache__", "dist"}
     lost: list[str] = []
 
     for tree in shipped:
         for path in sorted((REPO_ROOT / tree).rglob("*")):
-            if not path.is_file() or "__pycache__" in path.parts:
+            if not path.is_file() or skip_dirs & set(path.relative_to(REPO_ROOT).parts):
                 continue
             relative = path.relative_to(REPO_ROOT).as_posix()
 

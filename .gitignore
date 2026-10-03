@@ -97,3 +97,11 @@ tests/e2e/test_full_pipeline_real_screenshots.py
 bandit-report.json
 *.log
 *.out
+
+# ── 前端构建产物 ──────────────────────────────────────────────────────────
+# 必须写在根上。`apps/desktop/.gitignore` 早就有 `node_modules` / `dist`，
+# 于是第二个前端（apps/admin_console）建起来时并没有继承它——新克隆里
+# `git add apps/admin_console` 会把 12000 个依赖文件一起提交。规则随目录走，
+# 不随仓库走：只要新应用没复制一份 .gitignore，这个洞就重新打开。
+node_modules/
+dist/
